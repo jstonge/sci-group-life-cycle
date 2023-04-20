@@ -46,7 +46,7 @@ jobs:
             - name: Run & export Pluto notebooks
               run: |
                 julia -e 'using Pkg
-                  Pkg.activate(".)
+                  Pkg.activate(".")
                   Pkg.instantiate()
 
                   import PlutoSliderServer
