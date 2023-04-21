@@ -15,7 +15,7 @@ macro bind(def, element)
 end
 
 # ╔═╡ d6b89c46-87e6-4376-8a5c-6f830f1b1159
-using Plots, Distributions, StatsPlots, DataStructures, Graphs, MetaGraphs, GraphRecipes, LaTeXStrings, PlutoUI
+using Plots, Distributions, DataStructures, Graphs, MetaGraphs, LaTeXStrings, PlutoUI
 
 # ╔═╡ 93033bee-03a7-453c-aef4-29e62e0465a8
 md"""# Two ways to run a simulation"""
