@@ -14,9 +14,6 @@ macro bind(def, element)
     end
 end
 
-# ╔═╡ 0dc28d42-dfb9-11ed-36db-31cab58a12ad
-using Pkg; Pkg.activate("..")
-
 # ╔═╡ d6b89c46-87e6-4376-8a5c-6f830f1b1159
 using Plots, Distributions, StatsPlots, DataStructures, Graphs, MetaGraphs, GraphRecipes, LaTeXStrings, PlutoUI
 
