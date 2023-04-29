@@ -23,6 +23,9 @@ using Plots, Distributions, StatsPlots, DataStructures, Graphs, MetaGraphs, Grap
 # ╔═╡ d1b2eac7-adf5-492d-bb90-547c03645dee
 md"""# Event-driven simulation"""
 
+# ╔═╡ 5f77ed94-d2c1-40dd-b4d5-6c00c54a2b3b
+
+
 # ╔═╡ b508056b-b83c-4ef9-8b8c-2ef0d0ae1c92
 function infect_new_node(event_queue, G, node, beta, alpha, t)
     # Set Recovery period
@@ -137,6 +140,7 @@ end
 # ╟─0dc28d42-dfb9-11ed-36db-31cab58a12ad
 # ╠═d6b89c46-87e6-4376-8a5c-6f830f1b1159
 # ╟─d1b2eac7-adf5-492d-bb90-547c03645dee
+# ╠═5f77ed94-d2c1-40dd-b4d5-6c00c54a2b3b
 # ╠═b508056b-b83c-4ef9-8b8c-2ef0d0ae1c92
 # ╠═4927bc3f-84b2-4fbc-a7f3-f68615867f0d
 # ╠═094be43d-e578-4034-8730-b027bb43548f

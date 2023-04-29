@@ -5,13 +5,13 @@ using Plots.PlotMeasures
 include("helpers.jl")
 
 
-function initialize_u0(;N=20, M::Int=100, p::Float64=0.01)
+function initialize_u0(;N=40, M::Int=100)
   N_plus_one = N+1
   G = zeros(N_plus_one, N_plus_one)
-  for _ in 1:M
-    ℓ = rand(1:N_plus_one)
-    i = sum(rand(Binomial(1, p), N_plus_one))
-    G[ℓ, i+1] += 1
+  for _ in 1:100
+    nb_non_prog = sum(rand(Binomial(1, .1), N_plus_one))
+    nb_prog = sum(rand(Binomial(1, .05), N_plus_one))
+    G[nb_non_prog+2, nb_prog+1] += 1
   end
   G = G ./ M
   return G
@@ -45,30 +45,38 @@ function life_cycle_research_groups!(du, u, p, t)
   end
 end
 
-
 function frac_prog_in_groups(sol)
   """
   We want to know the (normalized) proportion of programmers by group size.
+
+   - sol: list of matrix where sol[102][3,4] would be equal to the distribution
+          at t=101 of groups with 2 programmers and 3 non-programmers.
   """
-  N, P = size(first(sol)) # Sol is 21x21 but we have 20x20 people. We have an extra col when #prog=0 or #non-prog=0
-  S = (N - 1) + (P - 1) # max group size = #non-prog + # prog
+  N, P = size(first(sol)) # Sol is 21x21 but we have 20x20 people. 
+                          # We have an extra col when #prog=0 or #non-prog=0
+  
+  S = (N-1) + (P-1) # max group size = #non-prog + # prog . But this is tricky.
+                    # We'll limit the group size to be (S/2)+1 because when
+                    # S/2 > 1, then we neccesarily start adding one or the other type of
+                    # individuals, i.e. for gsize=40 necessarily you add 
+                    # programmers or non-programmer after you hit 
+                    # programmers=20 or non-programmers=20.
+  
   t_max = length(sol)-1
 
-  frac_prog_each_timestep = zeros(t_max, S+1) # each vector is of 1x41, but first val should always=0 b/c we never have group_size=0
+  frac_prog_each_timestep = zeros(t_max, S÷2+1) # each vector is of 1x41, but first val should always=0 b/c we never have group_size=0
   
   for t=1:t_max
-    nums =  zeros(S+1)
-    denums = zeros(S+1)
-    for gsize=1:S
-      # Tricky. You cannot have a gsize of, say, 21 without having any programmers.
-      # Thus, when group_size > N, we substract N(20) from min # programmers, i.e.
-      # s = 21 => 22 - 20 = 2 - 1 = 1 programmer
-      min_p = gsize <= (N-1) ? 1 : (gsize+1) - (N-1)
-      for p=min_p:minimum([21, gsize+1])
-      
-        nb_prog = p-1     # idx_non_prog - 1 = #non-prog (b/c Julia is 1-based index) 
-        n = gsize-p+2     # This  works because, say, we have s=2, (p=2|nb_prog=1). We know if we have #prog=1, 
-                          # then #non-prog=1 (meaning its index n=2). Thus 2 - 2 + 1 (#prog) + 1 (# we want index)
+    nums =  zeros(S÷2+1)
+    denums = zeros(S÷2+1)
+
+    for gsize=1:(S÷2) # loop over group size 
+      for p=1:gsize # loop over possible nb of programmers by group size.
+
+        nb_prog=p-1     # idx_non_prog - 1 = #non-prog (b/c Julia is 1-based index) 
+        n=gsize-p+2     # This  works because, say, we have gsize=2, (p=2|nb_prog=1). 
+                        # We know if we have #prog=1, then #non-prog=1 (meaning its index n=2). 
+                        # Thus 2 - 2 + 1 (#prog) + 1 (# we want index)
         nums[gsize] += (nb_prog / gsize) * sol[t][n,p]
         denums[gsize] += sol[t][n,p]
       end
@@ -77,7 +85,6 @@ function frac_prog_in_groups(sol)
   end
   return frac_prog_each_timestep
 end
-
 
 function plot_sol(sol, p; outdir=nothing)
   
@@ -142,19 +149,20 @@ end
 
 μ  = 0.1   # inflow new students-non coders
 νₙ = 0.01    # death rate non-coders
-νₚ = 0.05    # death rate coders
+νₚ = 0.01    # death rate coders
 α  = 0.01    # benefits non coders
 β  = 0.1     # benefits coders
 a = 3.       # parameter cost function
 params = [μ, νₙ, νₚ, α, β, a]
 
-u₀ = initialize_u0(N=20)
+u₀ = initialize_u0(N=40)
 
 t_max = 4000
 tspan = (0., t_max)
 
 prob = ODEProblem(life_cycle_research_groups!, u₀, tspan, params)
 sol = solve(prob, Rosenbrock23(), saveat=1, reltol=1e-6, abstol=1e-6)
+
 
 # # checks
 # round(sum(sol[1]), digits= 2)
@@ -168,6 +176,7 @@ sol = solve(prob, Rosenbrock23(), saveat=1, reltol=1e-6, abstol=1e-6)
 
 # fraction of programmer by group size
 plot_sol(sol, params)  
+xlims!(0,40)
 plot!(size=(800,500))
 
 
@@ -189,6 +198,10 @@ function get_num_or_denum(sol; gsize, t, is_num=true)
   end
   return out
 end
+
+num = get_num_or_denum(sol, gsize=10, t=t_max, is_num=true)
+denum = get_num_or_denum(sol, gsize=10, t=t_max, is_num=false)
+"$(sum(num)) / $(sum(denum)) = $(sum(num) / sum(denum))"
 
 num = get_num_or_denum(sol, gsize=25, t=t_max, is_num=true)
 denum = get_num_or_denum(sol, gsize=25, t=t_max, is_num=false)
@@ -220,3 +233,30 @@ denum = get_num_or_denum(sol, gsize=32, t=t_max, is_num=false)
 #   end
 #   return out
 # end
+
+
+function run_sci_group(p)
+  u₀ = initialize_u0(N=20)
+  prob = ODEProblem(life_cycle_research_groups!, u₀, tspan, p)
+  sol = solve(prob, Rosenbrock23(), saveat=1, reltol=1e-6, abstol=1e-6)
+  return frac_prog_in_groups(sol)
+end
+
+tspan = (0., 4000) 
+param_lab = ["μ", "νₙ", "νₚ", "α", "β", "a", "p"]
+
+params = [0.1, 0.01, 0.01, 0.01, 0.1, 3.]
+out = run_sci_group(params)
+t_max, last_t = length(sol)-1, length(out[1,:])-1
+param_str = join(["$(pname)=$(p);" for (pname, p) in zip(param_lab, params)], '\n')
+ps = plot(1:last_t, out[t_max,1:last_t], legend=:outerright, size=(650,400), label="μ=0.1")
+for μ=0.1:0.1:0.5
+  out = run_sci_group(params)
+  t_max, last_t = length(sol)-1, length(out[1,:])-1
+  # param_str = join(["$(pname)=$(p);" for (pname, p) in zip(param_lab, params)], '\n')
+  plot!(1:last_t, out[t_max,1:last_t], label="μ=$(μ)")
+end
+xlabel!("group size")
+ylabel!("proportion programmers")
+ylims!(0,1)
+ps
