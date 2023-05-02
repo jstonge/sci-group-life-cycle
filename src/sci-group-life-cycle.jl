@@ -86,8 +86,7 @@ function frac_prog_in_groups(sol)
   return frac_prog_each_timestep
 end
 
-function plot_sol(sol, p; outdir=nothing)
-  
+function plot_sol(sol, p; outdir=nothing)  
   out = frac_prog_in_groups(sol)
   t_max = length(sol)-1
   last_t=length(out[1,:])-1
@@ -147,21 +146,21 @@ end
 
 # plot_tryptic_cost(c, 1)
 
-μ  = 0.1   # inflow new students-non coders
-νₙ = 0.01    # death rate non-coders
-νₚ = 0.01    # death rate coders
-α  = 0.01    # benefits non coders
-β  = 0.1     # benefits coders
-a = 3.       # parameter cost function
-params = [μ, νₙ, νₚ, α, β, a]
+# μ  = 0.1   # inflow new students-non coders
+# νₙ = 0.01    # death rate non-coders
+# νₚ = 0.01    # death rate coders
+# α  = 0.01    # benefits non coders
+# β  = 0.1     # benefits coders
+# a = 3.       # parameter cost function
+# params = [μ, νₙ, νₚ, α, β, a]
 
-u₀ = initialize_u0(N=40)
+# u₀ = initialize_u0(N=40)
 
-t_max = 4000
-tspan = (0., t_max)
+# t_max = 4000
+# tspan = (0., t_max)
 
-prob = ODEProblem(life_cycle_research_groups!, u₀, tspan, params)
-sol = solve(prob, Rosenbrock23(), saveat=1, reltol=1e-6, abstol=1e-6)
+# prob = ODEProblem(life_cycle_research_groups!, u₀, tspan, params)
+# sol = solve(prob, Rosenbrock23(), saveat=1, reltol=1e-6, abstol=1e-6)
 
 
 # # checks
@@ -175,9 +174,9 @@ sol = solve(prob, Rosenbrock23(), saveat=1, reltol=1e-6, abstol=1e-6)
 # --------------------------------- Analysis --------------------------------- #
 
 # fraction of programmer by group size
-plot_sol(sol, params)  
-xlims!(0,40)
-plot!(size=(800,500))
+# plot_sol(sol, params)  
+# xlims!(0,40)
+# plot!(size=(800,500))
 
 
 # checking the nums and denums for plot_sol
@@ -199,18 +198,18 @@ function get_num_or_denum(sol; gsize, t, is_num=true)
   return out
 end
 
-num = get_num_or_denum(sol, gsize=10, t=t_max, is_num=true)
-denum = get_num_or_denum(sol, gsize=10, t=t_max, is_num=false)
-"$(sum(num)) / $(sum(denum)) = $(sum(num) / sum(denum))"
+# num = get_num_or_denum(sol, gsize=10, t=t_max, is_num=true)
+# denum = get_num_or_denum(sol, gsize=10, t=t_max, is_num=false)
+# "$(sum(num)) / $(sum(denum)) = $(sum(num) / sum(denum))"
 
-num = get_num_or_denum(sol, gsize=25, t=t_max, is_num=true)
-denum = get_num_or_denum(sol, gsize=25, t=t_max, is_num=false)
-"$(sum(num)) / $(sum(denum)) = $(sum(num) / sum(denum))"
+# num = get_num_or_denum(sol, gsize=25, t=t_max, is_num=true)
+# denum = get_num_or_denum(sol, gsize=25, t=t_max, is_num=false)
+# "$(sum(num)) / $(sum(denum)) = $(sum(num) / sum(denum))"
 # sol[t_max]
 
-num = get_num_or_denum(sol, gsize=32, t=t_max, is_num=true)
-denum = get_num_or_denum(sol, gsize=32, t=t_max, is_num=false)
-"$(sum(num)) / $(sum(denum)) = $(sum(num) / sum(denum))"
+# num = get_num_or_denum(sol, gsize=32, t=t_max, is_num=true)
+# denum = get_num_or_denum(sol, gsize=32, t=t_max, is_num=false)
+# "$(sum(num)) / $(sum(denum)) = $(sum(num) / sum(denum))"
 
 
 #!TODO: Similar analysis than for fitness ~ transmission rate (by institutions)
@@ -234,29 +233,46 @@ denum = get_num_or_denum(sol, gsize=32, t=t_max, is_num=false)
 #   return out
 # end
 
+c(n, i; a=1) = n == i == 0 ? 0.95 : 0.95 * exp(-a*i / n)  # cost function
+τ(n, i, α, β) = exp(-α + β*(1 - c(n, i))) # group benefits
+α, β =0.01, 0.1
+# collect(.1:.33:1.)
+a=1
+ps = []
+for α=.01:.033:.1, β=.1:.33:1.
+  # p1=plot(x -> c(1,x, a=a), 0, 10, label="# non-prog=1")
+  # plot!(x -> c(3,x, a=a), 0, 10, label="# non-prog=3")
+  # plot!(x -> c(5,x, a=a), 0, 10, label="# non-prog=5")
+  # plot!(x -> c(10,x, a=a), 0, 10, label="# non-prog=10")
+  # xlabel!("# programmers")
+  # ylabel!("c(n,p)")
+  # title!("Cost function (a=$(a))")
 
-function run_sci_group(p)
-  u₀ = initialize_u0(N=20)
-  prob = ODEProblem(life_cycle_research_groups!, u₀, tspan, p)
-  sol = solve(prob, Rosenbrock23(), saveat=1, reltol=1e-6, abstol=1e-6)
-  return frac_prog_in_groups(sol)
+  p2=plot(x -> exp(-α + β*(1-c(1,x, a=a))), 0, 20, label="# non-prog=1")
+  xlabel!("# programmers")
+  ylabel!("τ(n,p)")
+  title!("e^(-$(α) + $(β)*(1-c))) & a=$(a)")
+  plot!(x -> exp(-α + β*(1-c(3,x, a=a))), 0, 20, label="# non-prog=3")
+  plot!(x -> exp(-α + β*(1-c(5,x, a=a))), 0, 20, label="# non-prog=5")
+  plot!(x -> exp(-α + β*(1-c(10,x, a=a))), 0, 20, label="# non-prog=10")
+
+  # push!(ps, plot(p1,p2,layout=(2,1)))
+  push!(ps, p2)
 end
 
-tspan = (0., 4000) 
-param_lab = ["μ", "νₙ", "νₚ", "α", "β", "a", "p"]
+plot(ps[1], ps[2], ps[3], 
+     ps[4], ps[5], ps[6], 
+     ps[7], ps[8], ps[9], 
+     layout=(3,3), size=(1200,1200))
+# ylims!(0.9, 2.5)
+# ylims!(0.4, 1.)
+# xlims!(0, 20)
 
-params = [0.1, 0.01, 0.01, 0.01, 0.1, 3.]
-out = run_sci_group(params)
-t_max, last_t = length(sol)-1, length(out[1,:])-1
-param_str = join(["$(pname)=$(p);" for (pname, p) in zip(param_lab, params)], '\n')
-ps = plot(1:last_t, out[t_max,1:last_t], legend=:outerright, size=(650,400), label="μ=0.1")
-for μ=0.1:0.1:0.5
-  out = run_sci_group(params)
-  t_max, last_t = length(sol)-1, length(out[1,:])-1
-  # param_str = join(["$(pname)=$(p);" for (pname, p) in zip(param_lab, params)], '\n')
-  plot!(1:last_t, out[t_max,1:last_t], label="μ=$(μ)")
-end
-xlabel!("group size")
-ylabel!("proportion programmers")
-ylims!(0,1)
-ps
+# Note: 
+# - No added benefits to go beyond 5 programmers, regardless of the number of non-programmers
+# - As you add non-programmers, the group benefits of having more programmers decrease (prog are diluted).
+#   Mostly because the cost is still high (n=10 => 0.2 vs n=3 => 0.).
+# - When decreases a, cost stays longer nonzero, e.g. a=1, n=3, p=5 => c=.2 vs a=3, n=3, p=5 => c=0
+# - When increasing non-coders benefits α, the curves do not change but you increase group benefits 
+#   (α=.005,n=3,p=5 => τ≈exp(1.076) vs α=.1,n=3,p=5 => τ ≈ exp(.98))
+# - Playing with β much more effective to have large group benefits than α
