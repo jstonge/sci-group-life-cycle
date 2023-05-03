@@ -2,7 +2,8 @@ using Pkg; Pkg.activate(".");
 using ArgParse, Distributions, StatsBase, OrdinaryDiffEq, Plots
 using Plots.PlotMeasures
 
-include("helpers.jl")
+include("../helpers.jl")
+include("../analysis/timeseries.jl")
 
 c(n, i; a=3) = n == i == 0 ? 0.95 : 0.95 * exp(-a*i / n)  # cost function
 τ(n, i, α, β) = exp(-α + β*(1 - c(n, i))) # group benefits
@@ -21,15 +22,20 @@ function initialize_u0(;N=40, M::Int=100)
 end
 
 function life_cycle_research_groups!(du, u, p, t)
+  
   N, P = size(u) # Note that there can be no coders but not non-coders
   G = u # G for groups
   μ, νₙ, νₚ, α, β, a = p
   for n=1:N, i=1:P
     coder, noncoder = i-1, n-1 
     du[n,i] = 0
+    
+    # Same rate of new students, but they go into a group of size n ∝ n / tot_people in system
+    # noncoder > 0 && ( du[n,i] += μ*G[n-1,i] ) # non-prog repro input
+    # n < N && ( du[n,i] -= G[n,i]*μ )          # non-prog repro output
 
-    noncoder > 0 && ( du[n,i] += μ*G[n-1,i] ) # non-prog repro input
-    n < N && ( du[n,i] -= G[n,i]*μ )          # non-prog repro output
+    # u₀[2,2] / u₀
+    # μ * n ∝ n / tot_people in system
 
     n < N && ( du[n,i] += G[n+1,i]*νₙ*(noncoder+1) ) # non-prog death input
     du[n,i] -= G[n,i]*noncoder*νₙ                    # non-prog death output
@@ -114,32 +120,34 @@ end
 
 # prototyping ------------------------------------------------------------------
 
-# plot_tryptic_cost(c, 1)
+μ  = 0.1   # inflow new students-non coders
+νₙ = 0.01    # death rate non-coders
+νₚ = 0.05    # death rate coders
+α  = 0.01    # benefits non coders
+β  = 0.1     # benefits coders
+a = 3.       # parameter cost function
+params = [μ, νₙ, νₚ, α, β, a]
 
-# μ  = 0.1   # inflow new students-non coders
-# νₙ = 0.01    # death rate non-coders
-# νₚ = 0.01    # death rate coders
-# α  = 0.01    # benefits non coders
-# β  = 0.1     # benefits coders
-# a = 3.       # parameter cost function
-# params = [μ, νₙ, νₚ, α, β, a]
+u₀ = initialize_u0(N=20)
 
-# u₀ = initialize_u0(N=40)
+t_max = 4000
+tspan = (0., t_max)
 
-# t_max = 4000
-# tspan = (0., t_max)
+prob = ODEProblem(life_cycle_research_groups!, u₀, tspan, params)
+sol = solve(prob, Rosenbrock23(), saveat=1, reltol=1e-6, abstol=1e-6)
 
-# prob = ODEProblem(life_cycle_research_groups!, u₀, tspan, params)
-# sol = solve(prob, Rosenbrock23(), saveat=1, reltol=1e-6, abstol=1e-6)
+plot_sol(sol, params)
+ylims!(0,.4)
 
 
 # # checks
-# round(sum(sol[1]), digits= 2)
-# round(sum(sol[t_max]), digits= 2)
+sol[t_max]
 
-# round.(sum(sol[t_max], dims=1), digits=4)
-# round.(sum(sol[t_max], dims=2), digits=4)
+round(sum(sol[1]), digits= 2)
+round(sum(sol[t_max]), digits= 2)
 
+round.(sum(sol[t_max], dims=1), digits=4)
+round.(sum(sol[t_max], dims=2), digits=4)
 
 
 

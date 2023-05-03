@@ -38,9 +38,9 @@ function plot_sol(sol, p; outdir=nothing)
       println("Writing to disk")
       savefig("$(outdir)/$(join(p, "_")).pdf")
     end
-  end
+end
   
 # fraction of programmer by group size
-plot_sol(sol, params)  
-xlims!(0,40)
-plot!(size=(800,500))
+# plot_sol(sol, params)  
+# xlims!(0,40)
+# plot!(size=(800,500))
