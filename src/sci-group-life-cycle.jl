@@ -4,6 +4,9 @@ using Plots.PlotMeasures
 
 include("helpers.jl")
 
+c(n, i; a=3) = n == i == 0 ? 0.95 : 0.95 * exp(-a*i / n)  # cost function
+τ(n, i, α, β) = exp(-α + β*(1 - c(n, i))) # group benefits
+
 
 function initialize_u0(;N=40, M::Int=100)
   N_plus_one = N+1
@@ -16,9 +19,6 @@ function initialize_u0(;N=40, M::Int=100)
   G = G ./ M
   return G
 end
-
-c(n, i; a=3) = n == i == 0 ? 0.95 : 0.95 * exp(-a*i / n)  # cost function
-τ(n, i, α, β) = exp(-α + β*(1 - c(n, i))) # group benefits
 
 function life_cycle_research_groups!(du, u, p, t)
   N, P = size(u) # Note that there can be no coders but not non-coders
@@ -47,10 +47,8 @@ end
 
 function frac_prog_in_groups(sol)
   """
-  We want to know the (normalized) proportion of programmers by group size.
-
-   - sol: list of matrix where sol[102][3,4] would be equal to the distribution
-          at t=101 of groups with 2 programmers and 3 non-programmers.
+ sol => list of matrix where sol[102][3,4] would be equal to the dist.
+       at t=101 of groups with 2 progs and 3 non-progs.
   """
   N, P = size(first(sol)) # Sol is 21x21 but we have 20x20 people. 
                           # We have an extra col when #prog=0 or #non-prog=0
@@ -72,49 +70,21 @@ function frac_prog_in_groups(sol)
 
     for gsize=1:(S÷2) # loop over group size 
       for p=1:gsize # loop over possible nb of programmers by group size.
-
+        # t, gsize, p = t_max, 10, 10
         nb_prog=p-1     # idx_non_prog - 1 = #non-prog (b/c Julia is 1-based index) 
         n=gsize-p+2     # This  works because, say, we have gsize=2, (p=2|nb_prog=1). 
-                        # We know if we have #prog=1, then #non-prog=1 (meaning its index n=2). 
-                        # Thus 2 - 2 + 1 (#prog) + 1 (# we want index)
-        nums[gsize] += (nb_prog / gsize) * sol[t][n,p]
-        denums[gsize] += sol[t][n,p]
-      end
-    end
+        # We know if we have #prog=1, then #non-prog=1 (meaning its index n=2). 
+        # Thus 2 - 2 + 1 (#prog) + 1 (# we want index)
+        nums[gsize] += (nb_prog / gsize) * sol[t][p,n]
+        denums[gsize] += sol[t][p,n]
+      end # p
+    end # gsize
+  
     frac_prog_each_timestep[t,:] = map(x -> isnan(x) ? 0. : float(x), nums ./ denums) # nans because 0/0. If it happens, we just put a zero.
-  end
+  end # time
   return frac_prog_each_timestep
 end
 
-function plot_sol(sol, p; outdir=nothing)  
-  out = frac_prog_in_groups(sol)
-  t_max = length(sol)-1
-  last_t=length(out[1,:])-1
-
-  param_lab = ["μ", "νₙ", "νₚ", "α", "β", "a", "p"]
-  param_str = join(["$(pname)=$(p);" for (pname, p) in zip(param_lab, p)], ' ')
-  ps=plot(1:last_t, out[2,1:last_t], label="t=2", legend=:outerright, top_margin = 20mm)
-  for t=collect(5:5:30)
-    plot!(1:last_t, out[t,1:last_t], label="t=$(t)") 
-  end
-  
-  plot!(1:last_t, out[t_max,1:last_t], label="t=$(t_max)")
-  
-  title!("Many programmers in large groups while\nwe have few programmers in small groups\n($(param_str))")
-  xlabel!("group size")
-  ylabel!("proportion programmers")
-  ylims!(0,1)
-  plot!(size=(650,400))
-
-  if isnothing(outdir) 
-    println("Plotting")
-    return ps
-  else
-    ps
-    println("Writing to disk")
-    savefig("$(outdir)/$(join(p, "_")).pdf")
-  end
-end
 
 function main()
     args = parse_commandline()
@@ -171,12 +141,9 @@ end
 # round.(sum(sol[t_max], dims=2), digits=4)
 
 
-# --------------------------------- Analysis --------------------------------- #
 
-# fraction of programmer by group size
-# plot_sol(sol, params)  
-# xlims!(0,40)
-# plot!(size=(800,500))
+
+# debugging -------------------------------------------------------------------
 
 
 # checking the nums and denums for plot_sol
@@ -212,67 +179,3 @@ end
 # "$(sum(num)) / $(sum(denum)) = $(sum(num) / sum(denum))"
 
 
-#!TODO: Similar analysis than for fitness ~ transmission rate (by institutions)
-# function calc_group_benefits(sol; gsize)
-#   # gsize=10
-#   N, P = size(first(sol)) 
-#   t_max=length(sol)-1
-#   # benefits_over_time = zeros(t_max)
-#   min_p = gsize <= (N-1) ? 1 : (gsize+1) - (N-1) 
-#   for t=t_max
-#     # t = t_max
-#     out = []
-#     for p=min_p:minimum([21, gsize+1])
-#       # p=5
-#       nb_prog = p-1
-#       n = gsize-p+2
-#       nb_non_prog = n - 1
-#       push!(out, ( τ(nb_non_prog, nb_prog, α, β)*sol[t][n,p]) / sol[t][n,p] )
-#     end
-#   end
-#   return out
-# end
-
-c(n, i; a=1) = n == i == 0 ? 0.95 : 0.95 * exp(-a*i / n)  # cost function
-τ(n, i, α, β) = exp(-α + β*(1 - c(n, i))) # group benefits
-α, β =0.01, 0.1
-# collect(.1:.33:1.)
-a=1
-ps = []
-for α=.01:.033:.1, β=.1:.33:1.
-  # p1=plot(x -> c(1,x, a=a), 0, 10, label="# non-prog=1")
-  # plot!(x -> c(3,x, a=a), 0, 10, label="# non-prog=3")
-  # plot!(x -> c(5,x, a=a), 0, 10, label="# non-prog=5")
-  # plot!(x -> c(10,x, a=a), 0, 10, label="# non-prog=10")
-  # xlabel!("# programmers")
-  # ylabel!("c(n,p)")
-  # title!("Cost function (a=$(a))")
-
-  p2=plot(x -> exp(-α + β*(1-c(1,x, a=a))), 0, 20, label="# non-prog=1")
-  xlabel!("# programmers")
-  ylabel!("τ(n,p)")
-  title!("e^(-$(α) + $(β)*(1-c))) & a=$(a)")
-  plot!(x -> exp(-α + β*(1-c(3,x, a=a))), 0, 20, label="# non-prog=3")
-  plot!(x -> exp(-α + β*(1-c(5,x, a=a))), 0, 20, label="# non-prog=5")
-  plot!(x -> exp(-α + β*(1-c(10,x, a=a))), 0, 20, label="# non-prog=10")
-
-  # push!(ps, plot(p1,p2,layout=(2,1)))
-  push!(ps, p2)
-end
-
-plot(ps[1], ps[2], ps[3], 
-     ps[4], ps[5], ps[6], 
-     ps[7], ps[8], ps[9], 
-     layout=(3,3), size=(1200,1200))
-# ylims!(0.9, 2.5)
-# ylims!(0.4, 1.)
-# xlims!(0, 20)
-
-# Note: 
-# - No added benefits to go beyond 5 programmers, regardless of the number of non-programmers
-# - As you add non-programmers, the group benefits of having more programmers decrease (prog are diluted).
-#   Mostly because the cost is still high (n=10 => 0.2 vs n=3 => 0.).
-# - When decreases a, cost stays longer nonzero, e.g. a=1, n=3, p=5 => c=.2 vs a=3, n=3, p=5 => c=0
-# - When increasing non-coders benefits α, the curves do not change but you increase group benefits 
-#   (α=.005,n=3,p=5 => τ≈exp(1.076) vs α=.1,n=3,p=5 => τ ≈ exp(.98))
-# - Playing with β much more effective to have large group benefits than α
