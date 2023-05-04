@@ -60,7 +60,7 @@ def pref_attachment_new_node(H):
     return choice(H.edges, p=dist_gsize)
 
 def whats_happening(event_queue, H, group, params, t):
-    u, nu_n, nu_p, alpha, beta, b = params
+    mu, nu_n, nu_p, alpha, beta, b = params
     p, n = count_prog_nonprog(H, group)
 
     R_nonprog_grad = nu_n * n
@@ -91,121 +91,125 @@ def whats_happening(event_queue, H, group, params, t):
 #parameters
 mu  = 0.5
 nu_n = 0.01
-nu_p = 0.01
+nu_p = 0.05
 alpha  = 0.01
 beta = 0.3 
-a = 3.   
-b = 8
-params = (mu, nu_n, nu_p, alpha, beta, a, b)
+# a = 3.   
+b = .5
+params = (mu, nu_n, nu_p, alpha, beta, b)
 
-#for each simulation
-for sims in range(10):
+# #for each simulation
+# for sims in range(10):
     
-    #initial conditions
-    event_queue = []
-    H = init_hypergraph()
-    I0 = 0.01
-    I = 0
-    Ig = np.zeros((21,21))
+#initial conditions
+event_queue = []
+H = init_hypergraph()
+I0 = 0.1
+I = 0
+Ig = np.zeros((21,21))
+time = 0
+for group, members in enumerate(H.edges.members()): #loop over groups
+    # group, members = 0, H.edges.members(0)
+    gsize = len(members)
+    states_binary = binomial(gsize, I0, size=gsize)
+    states = np.where(states_binary == 0, 'non-prog', 'prog')
+    for node, state in zip(members, states):
+        H.nodes[node]['state'] = state
+    event_queue = whats_happening(event_queue, H, group, params, time)
+    nb_prog = np.sum(states_binary)
+    Ig[nb_prog, gsize-nb_prog] += 1
+    I += nb_prog
+# what's in the event queue?
+Counter(e[2] for e in event_queue)
 
-    time = 0
-    for group, members in enumerate(H.edges.members()): #loop over groups
-        # group, members = 0, H.edges.members(0)
-        gsize = len(members)
-        states_binary = binomial(gsize, I0, size=gsize)
-        states = np.where(states_binary == 0, 'non-prog', 'prog')
-        for node, state in zip(members, states):
-            H.nodes[node]['state'] = state
-        event_queue = whats_happening(event_queue, H, group, params, t)
-        nb_prog = np.sum(states_binary)
-        Ig[nb_prog, gsize-nb_prog] += 1
-        I += nb_prog
+history = []
+history_pref = []
+history_group = []
+tot_pop = []
+history.append(I/H.num_nodes)
+history_group.append(Ig/np.sum(Ig))
+tot_pop.append(H.num_nodes)
+times = np.zeros(1)
+
+#for each generation
+t_max = 5000
+while time < t_max and len(event_queue) > 0:
+    # draw from event queue
+    (tau, group, event, p, n) = heapq.heappop(event_queue)
     
-    history = []
-    history_pref = []
-    history_group = []
-    tot_pop = []
-    history.append(I/H.num_nodes)
-    history_group.append(Ig/np.sum(Ig))
-    tot_pop.append(H.num_nodes)
-    times = np.zeros(1)
-    
-    #for each generation
-    t_max = 1000
-    while time < t_max and len(event_queue) > 0:
-        # draw from event queue
+    while H.edges.get(group) is None:
         (tau, group, event, p, n) = heapq.heappop(event_queue)
-        
-        while H.edges.get(group) is None:
-            (tau, group, event, p, n) = heapq.heappop(event_queue)
-
-        if event == 'non-programmer graduates' or event == "non-prog leaves":           
-            leaving_node = grab(H, group, 'non-prog')
-            # Not ideal.
-            if leaving_node:
-                H.remove_node(leaving_node)
-                Ig[p, n]   -= 1
-                Ig[p, n-1] += 1
-                
-
-        if event == 'programmer graduates':
-            leaving_node = grab(H, group, 'prog')
-            # Not ideal.
-            if leaving_node:
-                H.remove_node(leaving_node)
-                I -= 1
-                Ig[p, n]   -= 1
-                Ig[p-1, n] += 1
-        
-        if event == 'new non-programmer':
-            # A bit weird. Although the event is happening on a particular group
-            # the new node decide to join another group proportional to gsize.
-            # But you know..
-            selected_group = pref_attachment_new_node(H)
-            new_node = H.num_nodes+1
-            H.add_node_to_edge(selected_group, new_node)
-            H.nodes[new_node]['state'] = 'non-prog'
+    if event == 'non-programmer graduates' or event == "non-prog leaves":           
+        leaving_node = grab(H, group, 'non-prog')
+        # Not ideal.
+        if leaving_node:
+            H.remove_node(leaving_node)
+            Ig[p, n]   -= 1
+            Ig[p, n-1] += 1
+            
+    if event == 'programmer graduates':
+        leaving_node = grab(H, group, 'prog')
+        # Not ideal.
+        if leaving_node:
+            H.remove_node(leaving_node)
+            I -= 1
+            Ig[p, n]   -= 1
+            Ig[p-1, n] += 1
+    
+    if event == 'new non-programmer':
+        # A bit weird. Although the event is happening on a particular group
+        # the new node decide to join another group proportional to gsize.
+        # But you know..
+        selected_group = pref_attachment_new_node(H)
+        new_node = H.num_nodes+1
+        H.add_node_to_edge(selected_group, new_node)
+        H.nodes[new_node]['state'] = 'non-prog'
+        # Now that we have a new programmer in that group, something else might happen.
+        # Another students might join the university, another student in the same group
+        # might try it too, etc.
+        event_queue = whats_happening(event_queue, H, group, params, time)
+        Ig[p, n+1] += 1
+        Ig[p, n]   -= 1
+        history_pref.append(selected_group)
+    if event == 'new programmer':
+        converting_node = grab(H, group, 'non-prog')
+        # Not ideal.
+        if converting_node:
+            H.nodes[converting_node]['state'] = 'prog'
+            I += 1
+            Ig[p+1, n] += 1
+            Ig[p, n]   -= 1
             # Now that we have a new programmer in that group, something else might happen.
             # Another students might join the university, another student in the same group
             # might try it too, etc.
-            event_queue = whats_happening(event_queue, H, group, params, t)
-            Ig[p, n+1] += 1
-            Ig[p, n]   -= 1
-            history_pref.append(selected_group)
+            event_queue = whats_happening(event_queue, H, group, params, time)
+    #update history
+    time = time + tau
+    tot_pop.append(H.num_nodes)
+    history = np.append(history, I / H.num_nodes)
+    history_group.append(Ig/np.sum(Ig))
+    times = np.append(times, time)
 
-        if event == 'new programmer':
-            converting_node = grab(H, group, 'non-prog')
-            # Not ideal.
-            if converting_node:
-                H.nodes[converting_node]['state'] = 'prog'
-                I += 1
-                Ig[p+1, n] += 1
-                Ig[p, n]   -= 1
-                # Now that we have a new programmer in that group, something else might happen.
-                # Another students might join the university, another student in the same group
-                # might try it too, etc.
-                event_queue = whats_happening(event_queue, H, group, params, t)
+#print time series
+plt.plot(times, history, marker="o", ls='--', color='black', alpha=0.05)
+plt.ylabel('Frac Programmers')
+plt.legend()
+plt.xlabel('Time')
+plt.plot(times[-1],history[-1], marker="o", ls='--', color='black', alpha=0.05, label='Simulations')
+plt.show()
 
-        #update history
-        time = time + tau
-        tot_pop.append(H.num_nodes)
-        history = np.append(history, I / H.num_nodes)
-        history_group.append(Ig/np.sum(Ig))
-        times = np.append(times, time)
-    
-    #print time series
-    plt.plot(times, history, marker="o", ls='--', color='black', alpha=0.05)
-    plt.plot(times, tot_pop, color='midnightblue', alpha=0.5)
-    plot_pref(history_pref)
-    plot_frac_prog_group(history_group, times)
+plt.plot(times, tot_pop, color='midnightblue', alpha=0.5)
+plt.ylabel('Total Population') # pop decay for some reason
+plt.legend()
+plt.xlabel('Time')
+plt.show()
+
+plot_pref(history_pref)
+
+plot_frac_prog_group(history_group, times)
 
   
 
-plt.plot(times[-1],history[-1], marker="o", ls='--', color='black', alpha=0.05, label='Simulations')
-plt.legend()
-plt.ylabel('Frac Programmers')
-plt.xlabel('Time')
-plt.show()
 
 
 
