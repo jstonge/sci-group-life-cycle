@@ -21,6 +21,13 @@ def grab(H, group, state):
         if H.nodes[n]['state'] == state:
             return n        
 
+def plot_group_dist(H):
+    count_members = Counter([len(e) for e in H.edges.members()])
+    df = pd.DataFrame({"n": count_members.values(), "k": count_members.keys()})
+    sns.barplot(x="k", y="n", data=df, color="darkblue", alpha=0.5)
+    plt.xlabel("group size")
+    plt.ylabel("count")
+
 def plot_pref(history_pref):
     count_df = pd.DataFrame(Counter(history_pref).most_common(50), columns=['group', '# selected'])\
                  .assign(group = lambda x: x.group.astype(str))
