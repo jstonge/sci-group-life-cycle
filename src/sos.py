@@ -21,8 +21,7 @@ sns.set_style("whitegrid")
 
 def count_prog_nonprog(H, group):
     """return (p, n)"""
-    # assert H.edges.size.asdict()[group] > 0, f"Group {group} has been passed to count_prog_nonprog but it is empty"
-    if H.edges.size.asdict()[group] == 0:
+    if H.edges.get(group) is None:
        return 0, 0
     else:
         states_count = Counter(H.nodes[n]['state'] for n in H.edges.members(group))
@@ -46,6 +45,7 @@ def plot_group_dist(H):
     plt.xlabel("group size")
     plt.ylabel("count")
 
+
 def init_hypergraph(nb_groups=1000, max_group_size=40):
     current_node = 0
     hyperedge_dict = {}
@@ -62,6 +62,16 @@ def init_hypergraph(nb_groups=1000, max_group_size=40):
         current_node += group_size
 
     return xgi.Hypergraph(hyperedge_dict)
+
+
+def adding_new_non_prog(H, group, tot_nodes):
+    new_node =  tot_nodes + 1
+    if H.edges.get(group) is None:
+        H.add_edge({ group: new_node })
+    else:
+        H.add_node_to_edge(group, new_node)
+
+    H.nodes[new_node]['state'] = 'non-prog'
 
 
 def whats_happening(event_queue, H, group, params, t):
@@ -81,14 +91,14 @@ def whats_happening(event_queue, H, group, params, t):
     tauR = [R_nonprog_grad/R, R_prog_grad/R, R_conversion_attempt/R, R_new_nonprog/R] 
     which_event = choice(taulab, p=tauR)
     
-    next_event = (tau, group, which_event, p, n)
+    # Ok, now the new tau is added to time
+    next_event = (t+tau, group, which_event, p, n)
     
     if which_event == 'conversion attempt':
         if R_conversion_attempt/R < (1-c(n,p,b=b)):
-            next_event = (tau, group, "new programmer", p, n)
+            next_event = (t+tau, group, "new programmer", p, n)
         else:
-            next_event = (tau, group, "non-prog leaves", p, n)
-
+            next_event = (t+tau, group, "non-prog leaves", p, n)
 
     heapq.heappush(event_queue, next_event)
 
@@ -103,32 +113,37 @@ def main():
     beta = 0.1
     # a = 3.   
     b = .5
+    I0 = 0.1
     params = (mu, nu_n, nu_p, alpha, beta, b)
 
     #initial conditions
     event_queue = []
-    max_group_size=40
+    max_group_size = 40
     H = init_hypergraph(max_group_size=max_group_size)
-    I0 = 0.1
     I = 0
     Ig = np.zeros((max_group_size+1,max_group_size+1))
-    time = 0
+    t = 0
+    # total nodes dead or alive to have unique node identifier.
+    tot_nodes = H.num_nodes
     # we start out we a hypergraph where hyperedges == groups
     # they are non-overlapping at the moment. all_gsize > 0.
     for group, members in enumerate(H.edges.members()): #loop over groups
-        # group, members = 0, H.edges.members(0)
+        # group, members = 1, H.edges.members(1)
         gsize = len(members)
-        states_binary = binomial(gsize, I0, size=gsize)
+        states_binary = binomial(1, I0, size=gsize)
         nb_prog = np.sum(states_binary)
         states = np.where(states_binary == 0, 'non-prog', 'prog')
         for node, state in zip(members, states):
             H.nodes[node]['state'] = state
-        event_queue = whats_happening(event_queue, H, group, params, time)
+        event_queue = whats_happening(event_queue, H, group, params, t)
+        # print((nb_prog, gsize-nb_prog, gsize))
         Ig[nb_prog, gsize-nb_prog] += 1
         I += nb_prog
 
     # what's in the event queue?
     # Counter(e[2] for e in event_queue)
+    # is the time alright?
+    # [e[0] for e in event_queue]
 
     history = []
     history_group = []
@@ -140,20 +155,32 @@ def main():
 
     #for each generation
     t_max = 5000
-    while time < t_max and len(event_queue) > 0:
+    
+    while t < t_max and len(event_queue) > 0:
+
         # draw from event queue
-        (tau, group, event, p, n) = heapq.heappop(event_queue)
+        # here is use time_tau because in whats_happening I always
+        # add time + tau. So this is not just tau, this is current time.
+        (time, group, event, p, n) = heapq.heappop(event_queue)  
 
         # we make sure that this group is not None.
         # this might happen when groups get depleted as people leave.
         # this is alright.
-        while H.edges.get(group) is None:
-            (tau, group, event, p, n) = heapq.heappop(event_queue)
+        # while H.edges.get(group) is None:
+        #     (time, group, event, p, n) = heapq.heappop(event_queue)
+
+        t += time
+
+        print((group, p, n, event))
+        if Ig[p,n] == 0:
+            print(f"We got a scenario at {p,n} that is {Ig[p,n]}")
+            break
 
         # in any case, something we'll happen and current group size will change.
         # This state should always > 0 as we are currently occupying it.
-
-        [H.nodes[n] for n in H.edges.members(group)]
+        # BUT for that i need to make sure first I never grab a node that is None.
+        # If not, I might remove the state without adding a new one.
+        # Ig[p, n]  -= 1
 
         if event == 'non-programmer graduates' or event == "non-prog leaves":           
             leaving_node = grab(H, group, 'non-prog')
@@ -173,14 +200,15 @@ def main():
                 H.remove_node(leaving_node)
                 I -= 1
                 assert p > 0
-                Ig[p, n]  -= 1
+                Ig[p, n]   -= 1
                 Ig[p-1, n] += 1
     
         if event == 'new non-programmer':
-            new_node = H.num_nodes+1
-            H.add_node_to_edge(group, new_node)
-            H.nodes[new_node]['state'] = 'non-prog'
-            assert n <= max_group_size
+            H.edges.members(group)
+            adding_new_non_prog(H, group, tot_nodes)
+            H.edges.members(group)
+            tot_nodes += 1
+            assert n <= max_group_size 
             Ig[p, n]  -= 1
             Ig[p, n+1] += 1
         
@@ -190,28 +218,24 @@ def main():
             # Not ideal.
             if converting_node:
                 H.nodes[converting_node]['state'] = 'prog'
-                Ig[p, n]  -= 1
                 I += 1
                 assert p <= max_group_size and n > 0
+                Ig[p, n]     -= 1
                 Ig[p+1, n-1] += 1
-                # Now that we have a new programmer in that group, something else might happen.
-                # Another students might join the university, another student in the same group
-                # might try it too, etc.
+                
+        # if np.sum(Ig/np.sum(Ig) < 0):
+        #     print(f"we got a negative value in IG at step {t}\nthe event was {event}\nGroup size was {len(H.edges.members(group))}\nn,p = {n, p}")
+        #     break
 
-        if np.sum(Ig/np.sum(Ig) < 0):
-            print(f"we got a negative value in IG at step {time}\nthe event was {event}\nGroup size was {len(H.edges.members(group))}\nn,p = {n, p}")
-            break
+        event_queue = whats_happening(event_queue, H, group, params, t)
 
-        event_queue = whats_happening(event_queue, H, group, params, time)
-
-        #update history
-        time = time + tau
+        # update history
         tot_pop.append(H.num_nodes)
         history = np.append(history, I / H.num_nodes)
         history_group.append(Ig/np.sum(Ig))
         times = np.append(times, time)
 
-
+    
     plot_frac_prog_group(history_group, times)
 
 
