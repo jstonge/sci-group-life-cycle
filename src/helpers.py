@@ -35,6 +35,45 @@ def plot_pref(history_pref):
     fig, ax = plt.subplots(1,1,figsize=(5, 10))
     sns.barplot(y="group", x="# selected", data=count_df, ax=ax)
 
+# def get_frac_by_group(history_group, tspan):
+#     history_group_wrangled = np.zeros((tspan, 40//2))
+#     for t in range(tspan):
+#         out = np.zeros(40//2)
+#         for gsize in range(40//2):
+#             for p in range(gsize):
+#                 n = gsize-p
+#                 out[gsize] += history_group[t][p, n]
+    
+#     history_group_wrangled[t,:] = out
+#     return history_group_wrangled
+
+# def plot_frac_prog_group(history_group, times, out=None):
+#     history_group_wrangled = get_frac_by_group(history_group, len(times))
+#     fig, ax = plt.subplots(1,1, figsize=(8,5))
+#     ax.plot(times, [history_group_wrangled[t][1] for t in range(len(times))], 
+#             marker="o", ls='--', color='red', alpha=0.15, label="gsize=1")
+#     ax.plot(times, [history_group_wrangled[t][3] for t in range(len(times))], 
+#             marker="o", ls='--', color='black', alpha=0.15, label="gsize=3")
+#     ax.plot(times, [history_group_wrangled[t][5] for t in range(len(times))], 
+#             marker="o", ls='--', color='blue', alpha=0.15, label="gsize=5")
+#     ax.plot(times, [history_group_wrangled[t][7] for t in range(len(times))], 
+#             marker="o", ls='--', color='orange', alpha=0.15, label="gsize=7")
+#     ax.plot(times, [history_group_wrangled[t][10] for t in range(len(times))], 
+#             marker="o", ls='--', color='green', alpha=0.15, label="gsize=10")
+#     ax.plot(times, [history_group_wrangled[t][12] for t in range(len(times))], 
+#             marker="o", ls='--', color='cyan', alpha=0.15, label="gsize=12")
+#     ax.plot(times, [history_group_wrangled[t][15] for t in range(len(times))], 
+#             marker="o", ls='--', color='purple', alpha=0.15, label="gsize=15")
+#     # ax.plot(times, [history_group_wrangled[t][19] for t in range(len(times))], 
+#     #         marker="o", ls='--', color='grey', alpha=0.15, label="gsize=19")
+#     plt.legend()
+#     plt.ylabel("frac programmers")
+#     plt.xlabel("Time")
+
+#     if out is not None:
+#         plt.savefig("test_sims.png")
+
+
 def plot_frac_prog_group(history_group, times, out=None):
     history_group_wrangled = np.zeros((len(times), 40//2))
     for t in range(len(times)):
@@ -48,21 +87,20 @@ def plot_frac_prog_group(history_group, times, out=None):
 
     fig, ax = plt.subplots(1,1, figsize=(8,5))
     ax.plot(times, [history_group_wrangled[t][1] for t in range(len(times))], 
-            marker="o", ls='--', color='red', alpha=0.15, label="gsize=1")
+            color='red', alpha=0.55, label="gsize=1")
     ax.plot(times, [history_group_wrangled[t][3] for t in range(len(times))], 
-            marker="o", ls='--', color='black', alpha=0.15, label="gsize=3")
+            color='black', alpha=0.55, label="gsize=3")
     ax.plot(times, [history_group_wrangled[t][5] for t in range(len(times))], 
-            marker="o", ls='--', color='blue', alpha=0.15, label="gsize=5")
+            color='blue', alpha=0.55, label="gsize=5")
     ax.plot(times, [history_group_wrangled[t][7] for t in range(len(times))], 
-            marker="o", ls='--', color='orange', alpha=0.15, label="gsize=7")
+            color='orange', alpha=0.55, label="gsize=7")
     ax.plot(times, [history_group_wrangled[t][10] for t in range(len(times))], 
-            marker="o", ls='--', color='green', alpha=0.15, label="gsize=10")
+            color='green', alpha=0.55, label="gsize=10")
     ax.plot(times, [history_group_wrangled[t][12] for t in range(len(times))], 
-            marker="o", ls='--', color='cyan', alpha=0.15, label="gsize=12")
+            color='cyan', alpha=0.55, label="gsize=12")
     plt.legend()
     plt.ylabel("frac programmers")
     plt.xlabel("Time")
 
     if out is not None:
         plt.savefig("test_sims.png")
-
