@@ -13,12 +13,6 @@ from helpers import count_prog_nonprog, grab, plot_frac_prog_group, plot_pref
 sns.set_style("whitegrid")
 
 
-# helpers -----------------------------------------------------------------------------------------
-
-
-# def get_max_prog_or_nonprog(history_group):
-#     print(np.max([np.max(_) for _ in np.argwhere(history_group[-1] > 0)]))
-
 def count_prog_nonprog(H, group):
     """return (p, n)"""
     if H.edges.get(group) is None:
@@ -45,7 +39,6 @@ def plot_group_dist(H):
     plt.xlabel("group size")
     plt.ylabel("count")
 
-
 def init_hypergraph(nb_groups=1000, max_group_size=40):
     current_node = 0
     hyperedge_dict = {}
@@ -63,16 +56,14 @@ def init_hypergraph(nb_groups=1000, max_group_size=40):
 
     return xgi.Hypergraph(hyperedge_dict)
 
-
 def adding_new_non_prog(H, group, tot_nodes):
     new_node =  tot_nodes + 1
     if H.edges.get(group) is None:
-        H.add_edge({ group: new_node })
+        H.add_edge([new_node], id=group)
     else:
         H.add_node_to_edge(group, new_node)
 
     H.nodes[new_node]['state'] = 'non-prog'
-
 
 def whats_happening(event_queue, H, group, params, t):
     mu, nu_n, nu_p, alpha, beta, b = params
@@ -128,7 +119,6 @@ def main():
     # we start out we a hypergraph where hyperedges == groups
     # they are non-overlapping at the moment. all_gsize > 0.
     for group, members in enumerate(H.edges.members()): #loop over groups
-        # group, members = 1, H.edges.members(1)
         gsize = len(members)
         states_binary = binomial(1, I0, size=gsize)
         nb_prog = np.sum(states_binary)
@@ -136,7 +126,6 @@ def main():
         for node, state in zip(members, states):
             H.nodes[node]['state'] = state
         event_queue = whats_happening(event_queue, H, group, params, t)
-        # print((nb_prog, gsize-nb_prog, gsize))
         Ig[nb_prog, gsize-nb_prog] += 1
         I += nb_prog
 
@@ -154,7 +143,7 @@ def main():
     times = np.zeros(1)
 
     #for each generation
-    t_max = 5000
+    t_max = 1000
     
     while t < t_max and len(event_queue) > 0:
 
@@ -162,6 +151,8 @@ def main():
         # here is use time_tau because in whats_happening I always
         # add time + tau. So this is not just tau, this is current time.
         (time, group, event, p, n) = heapq.heappop(event_queue)  
+        
+        t=time
 
         # we make sure that this group is not None.
         # this might happen when groups get depleted as people leave.
@@ -169,12 +160,11 @@ def main():
         # while H.edges.get(group) is None:
         #     (time, group, event, p, n) = heapq.heappop(event_queue)
 
-        t += time
 
-        print((group, p, n, event))
-        if Ig[p,n] == 0:
-            print(f"We got a scenario at {p,n} that is {Ig[p,n]}")
-            break
+        # print((group, p, n, event))
+        # if Ig[p,n] == 0:
+        #     print(f"We got a scenario at {p,n} that is {Ig[p,n]}")
+        #     break
 
         # in any case, something we'll happen and current group size will change.
         # This state should always > 0 as we are currently occupying it.
@@ -204,9 +194,7 @@ def main():
                 Ig[p-1, n] += 1
     
         if event == 'new non-programmer':
-            H.edges.members(group)
             adding_new_non_prog(H, group, tot_nodes)
-            H.edges.members(group)
             tot_nodes += 1
             assert n <= max_group_size 
             Ig[p, n]  -= 1
@@ -222,7 +210,7 @@ def main():
                 assert p <= max_group_size and n > 0
                 Ig[p, n]     -= 1
                 Ig[p+1, n-1] += 1
-                
+
         # if np.sum(Ig/np.sum(Ig) < 0):
         #     print(f"we got a negative value in IG at step {t}\nthe event was {event}\nGroup size was {len(H.edges.members(group))}\nn,p = {n, p}")
         #     break
@@ -235,7 +223,7 @@ def main():
         history_group.append(Ig/np.sum(Ig))
         times = np.append(times, time)
 
-    
+    # sns.set_style('whitegrid')
     plot_frac_prog_group(history_group, times)
 
 
@@ -367,3 +355,73 @@ main()
 # plt.xlabel('Time')
 # plt.show()
 
+
+
+import numpy as np
+import heapq
+
+# New infection: Plan new infections and recovery
+def infect_new_node(event_queue, G, node, beta, alpha, t):
+
+    # Set Recovery period
+    # The time to a Poisson event 
+    #     follows an exponential distribution with average 1/rate
+    tau_r = np.random.exponential(scale=1/alpha)
+    # Add the recovery to the queue which orders by time, 
+    # but also make sure to save information needed: node and event type.
+    heapq.heappush(event_queue, (t+tau_r, node, "recovery"))
+
+    # Set infection times
+    for neighbor in G.neighbors(node): #loop over ALL neighbors
+      #
+        tau_i = np.random.exponential(scale=1/beta)
+        if tau_i < tau_r:
+            heapq.heappush(event_queue, (t+tau_i, neighbor, "infection"))
+
+    return event_queue
+
+
+import random
+import networkx as nx
+
+# Create a network
+G = nx.barabasi_albert_graph(1000, 2)
+
+# Event queue for continuous time events
+event_queue = []
+
+# Parameters of the model
+beta = 0.0025 #transmission rate
+alpha = 0.01 #recovery rate
+I0 = 0.01 #initial fraction of infected nodes
+
+# Initial conditions
+t = 0
+I = 0
+for node in list(G.nodes()): #loop over nodes
+    G.nodes[node]['state'] = 'susceptible'
+    if random.random()<I0:
+        G.nodes[node]['state'] = 'infected'
+        event_queue = infect_new_node(event_queue, G, node, beta, alpha, t)
+        I += 1
+        
+# Counter
+history = []
+times = []
+history.append(I/G.number_of_nodes())
+times.append(t)
+
+# Simulation
+tmax = 500
+while t<tmax:
+    (time, node, event) = heapq.heappop(event_queue)
+    t=time
+    if event == 'recovery' and G.nodes[node]['state'] == 'infected':
+        G.nodes[node]['state'] = 'recovered'
+        I -= 1
+    if event == 'infection' and G.nodes[node]['state'] == 'susceptible':
+        G.nodes[node]['state'] = 'infected'
+        event_queue = infect_new_node(event_queue, G, node, beta, alpha, t)
+        I += 1
+    history.append(I/G.number_of_nodes())
+    times.append(t)
