@@ -16,20 +16,22 @@ sns.set_style("whitegrid")
 # helpers -----------------------------------------------------------------------------------------
 
 
-def get_max_prog_or_nonprog(history_group):
-    print(np.max([np.max(_) for _ in np.argwhere(history_group[-1] > 0)]))
+# def get_max_prog_or_nonprog(history_group):
+#     print(np.max([np.max(_) for _ in np.argwhere(history_group[-1] > 0)]))
 
 def count_prog_nonprog(H, group):
     """return (p, n)"""
-    assert H.edges.size.asdict()[group] > 0, f"Group {group} has been passed to count_prog_nonprog but it is empty"
-    
-    states_count = Counter(H.nodes[n]['state'] for n in H.edges.members(group))
-    if len(states_count) == 2:
-        return states_count.values()
-    elif states_count.get('prog') is None:
-        return 0, list(states_count.values())[0]
+    # assert H.edges.size.asdict()[group] > 0, f"Group {group} has been passed to count_prog_nonprog but it is empty"
+    if H.edges.size.asdict()[group] == 0:
+       return 0, 0
     else:
-        return list(states_count.values())[0], 0
+        states_count = Counter(H.nodes[n]['state'] for n in H.edges.members(group))
+        if len(states_count) == 2:
+            return states_count.values()
+        elif states_count.get('prog') is None:
+            return 0, list(states_count.values())[0]
+        else:
+            return list(states_count.values())[0], 0
 
 def τ(n, p, α, β, b=0.9): # group benefits
     return np.exp(-α + β*(1 - c(n, p, b=b)))
@@ -103,9 +105,6 @@ def main():
     b = .5
     params = (mu, nu_n, nu_p, alpha, beta, b)
 
-    # #for each simulation
-    # for sims in range(10):
-        
     #initial conditions
     event_queue = []
     max_group_size=40
@@ -144,35 +143,37 @@ def main():
     while time < t_max and len(event_queue) > 0:
         # draw from event queue
         (tau, group, event, p, n) = heapq.heappop(event_queue)
-        
-        print(f"# group size {p+n}: {Ig[p,n]} at time {tau}")
-        if Ig[p, n] == 0:
-            print(f"IG was actually zero at {p,n} (group : {group})")
-            break
-        
+
         # we make sure that this group is not None.
         # this might happen when groups get depleted as people leave.
         # this is alright.
         while H.edges.get(group) is None:
             (tau, group, event, p, n) = heapq.heappop(event_queue)
 
+        # in any case, something we'll happen and current group size will change.
+        # This state should always > 0 as we are currently occupying it.
+
+        [H.nodes[n] for n in H.edges.members(group)]
+
         if event == 'non-programmer graduates' or event == "non-prog leaves":           
             leaving_node = grab(H, group, 'non-prog')
             # Not ideal.
+            assert leaving_node is not None, "node is None"
             if leaving_node:
                 H.remove_node(leaving_node)
                 assert n > 0
+                Ig[p, n]  -= 1
                 Ig[p, n-1] += 1
-                Ig[p, n]   -= 1
                 
         if event == 'programmer graduates':
             leaving_node = grab(H, group, 'prog')
+            assert leaving_node is not None, "node is None"
             # Not ideal.
             if leaving_node:
                 H.remove_node(leaving_node)
                 I -= 1
                 assert p > 0
-                Ig[p, n]   -= 1
+                Ig[p, n]  -= 1
                 Ig[p-1, n] += 1
     
         if event == 'new non-programmer':
@@ -180,18 +181,19 @@ def main():
             H.add_node_to_edge(group, new_node)
             H.nodes[new_node]['state'] = 'non-prog'
             assert n <= max_group_size
+            Ig[p, n]  -= 1
             Ig[p, n+1] += 1
-            Ig[p, n]   -= 1
         
         if event == 'new programmer':
             converting_node = grab(H, group, 'non-prog')
+            assert converting_node is not None, "node is None"
             # Not ideal.
             if converting_node:
                 H.nodes[converting_node]['state'] = 'prog'
+                Ig[p, n]  -= 1
                 I += 1
                 assert p <= max_group_size and n > 0
                 Ig[p+1, n-1] += 1
-                Ig[p, n] -= 1
                 # Now that we have a new programmer in that group, something else might happen.
                 # Another students might join the university, another student in the same group
                 # might try it too, etc.
@@ -200,14 +202,7 @@ def main():
             print(f"we got a negative value in IG at step {time}\nthe event was {event}\nGroup size was {len(H.edges.members(group))}\nn,p = {n, p}")
             break
 
-        # whatev is happening, lets update the queue
-        # but now sometimes the last person leaves the group.
-        # We could accept groups that come back to life, but for 
-        # now we just skip them.
-        if H.edges.get(group) is None:
-            pass
-        else:
-            event_queue = whats_happening(event_queue, H, group, params, time)
+        event_queue = whats_happening(event_queue, H, group, params, time)
 
         #update history
         time = time + tau
