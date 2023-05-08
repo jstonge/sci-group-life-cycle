@@ -35,42 +35,8 @@ def plot_pref(history_pref):
     fig, ax = plt.subplots(1,1,figsize=(5, 10))
     sns.barplot(y="group", x="# selected", data=count_df, ax=ax)
 
-def plot_frac_prog_group(history_group, times, ax=None, out=None):
-    history_group_wrangled = np.zeros((len(times), (40//2)+1))
-    for t in range(len(times)):
-        out = np.zeros((40//2)+1)
-        for gsize in range((40//2)+1):
-            for p in range(gsize):
-                n = gsize-p
-                out[gsize] += history_group[t][p, n]
-    
-        history_group_wrangled[t,:] = out
 
-    if ax is None:
-        fig, ax = plt.subplots(1,1, figsize=(8,5))
-
-    sns.lineplot(x=times, y=[history_group_wrangled[t][1] for t in range(len(times))], 
-            color='red', alpha=0.95, ax=ax, label="gsize=1")
-    sns.lineplot(x=times, y=[history_group_wrangled[t][3] for t in range(len(times))], 
-            color='black', alpha=0.55, ax=ax, label="gsize=3")
-    sns.lineplot(x=times, y=[history_group_wrangled[t][5] for t in range(len(times))], 
-            color='blue', alpha=0.55, ax=ax, label="gsize=5")
-    sns.lineplot(x=times, y=[history_group_wrangled[t][7] for t in range(len(times))], 
-            color='orange', alpha=0.55, ax=ax, label="gsize=7")
-    sns.lineplot(x=times, y=[history_group_wrangled[t][10] for t in range(len(times))], 
-            color='green', alpha=0.55, ax=ax, label="gsize=10")
-    sns.lineplot(x=times, y=[history_group_wrangled[t][12] for t in range(len(times))], 
-            color='cyan', alpha=0.55, ax=ax, label="gsize=12")
-    sns.lineplot(x=times, y=[history_group_wrangled[t][20] for t in range(len(times))], 
-            color='purple', alpha=0.55, ax=ax, label="gsize=20")
-    ax.set_ylabel("frac programmers")
-    ax.set_xlabel("Time")
-    plt.legend()
-
-    if out is not None:
-        plt.savefig("test_sims.png")
-
-def plot_group_size(history_group, times, ax=None, out=None):
+def plot_group_size(history_group, times, ax=None, gsizes=None, out=None):
     history_group_wrangled = np.zeros((len(times), 40+1))
     for t in range(len(times)):
         out = np.zeros(40+1)
@@ -83,24 +49,12 @@ def plot_group_size(history_group, times, ax=None, out=None):
     if ax is None:
         fig, ax = plt.subplots(1,1, figsize=(8,5))
 
-    sns.lineplot(x=times, y=[history_group_wrangled[t][1] for t in range(len(times))], 
-            color='red', alpha=0.95, ax=ax, label="gsize=1")
-    sns.lineplot(x=times, y=[history_group_wrangled[t][3] for t in range(len(times))], 
-            color='black', alpha=1, ax=ax, label="gsize=3")
-    sns.lineplot(x=times, y=[history_group_wrangled[t][5] for t in range(len(times))], 
-            color='blue', alpha=0.55, ax=ax, label="gsize=5")
-    sns.lineplot(x=times, y=[history_group_wrangled[t][7] for t in range(len(times))], 
-            color='orange', alpha=0.55, ax=ax, label="gsize=7")
-    sns.lineplot(x=times, y=[history_group_wrangled[t][10] for t in range(len(times))], 
-            color='green', alpha=0.55, ax=ax, label="gsize=10")
-    sns.lineplot(x=times, y=[history_group_wrangled[t][12] for t in range(len(times))], 
-            color='cyan', alpha=0.55, ax=ax, label="gsize=12")
-    sns.lineplot(x=times, y=[history_group_wrangled[t][20] for t in range(len(times))], 
-            color='purple', alpha=0.55, ax=ax, label="gsize=20")
-    sns.lineplot(x=times, y=[history_group_wrangled[t][30] for t in range(len(times))], 
-            color='lightgrey', ax=ax, alpha=0.85, label="gsize=30")
-    sns.lineplot(x=times, y=[history_group_wrangled[t][39] for t in range(len(times))], 
-            color='pink', alpha=0.55, ax=ax, label="gsize=39")
+    if gsizes is None:
+        gsizes = [3,4,6, 8,10,13,17,22,25,33,39]
+    assert len(gsizes) <= len(sns.palettes.SEABORN_PALETTES['dark']), "too many gsize"
+    for gsize, col in zip(gsizes, sns.palettes.SEABORN_PALETTES['dark'][:len(gsizes)]):
+        sns.lineplot(x=times, y=[history_group_wrangled[t][gsize] for t in range(len(times))], 
+        color=col, alpha=0.95, ax=ax, label=f"gsize={gsize}")
     ax.set_ylabel("# groups")
     ax.set_xlabel("Time")
     plt.legend()

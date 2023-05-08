@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import xgi
-from numpy.random import binomial, choice, exponential, rand
+from numpy.random import binomial, choice, exponential, rand, logistic
 
 from helpers import count_prog_nonprog, grab, plot_frac_prog_group, plot_group_size
 
@@ -95,9 +95,7 @@ def whats_happening(event_queue, H, group, params, t):
     return event_queue
 
 def main():
-    #                 params
-    #        mu , nu_n, nu_p, alpha , beta, b, pa
-    params = (0.1, 0.01, 0.01, 0.01, 0.1, .5, 0)
+    params = (0.1, 0.01, 0.01, 0.01, 0.1, .5, 1)
     I0 = 0.1
 
     #initial conditions
@@ -131,18 +129,18 @@ def main():
     # [e[0] for e in event_queue]
 
     history = []
-    history_group_prog = []
     history_group = []
     tot_pop = []
     history.append(I/H.num_nodes)
-    history_group_prog.append(Ig/np.sum(Ig))
-    history_group.append(Ig)
+    # history_group_prog.append(Ig/np.sum(Ig))
+    history_group.append(Ig / np.sum(Ig))
     tot_pop.append(H.num_nodes)
     times = np.zeros(1)
 
     #for each generation
     t_max = 20
     
+    #for each generation
     while t < t_max:
 
         # draw from event queue
@@ -200,29 +198,90 @@ def main():
         # update history
         tot_pop.append(H.num_nodes)
         history = np.append(history, I / H.num_nodes)
-        history_group.append(Ig.copy())
-        history_group_prog.append(Ig/np.sum(Ig))
+        history_group.append(Ig / np.sum(Ig))
+        # history_group_prog.append(Ig/np.sum(Ig))
         times = np.append(times, time)
 
-    sns.set_style('whitegrid')
-    fig, axes = plt.subplots(2, 2, figsize=(15,10))
+
+    # sns.set_style('whitegrid')
+    def plot_quartet():
+        fig, axes = plt.subplots(2, 2, figsize=(15,10))
+        plot_frac_prog_group(history_group, times, ax=axes[0,0])
+        axes[0,0].set_xlabel("")
+        gsizes = [4,5,6,7,8,9,11,12,13]
+        plot_group_size(history_group, times, ax=axes[0,1], gsizes=gsizes)
+        axes[0,1].set_xlabel("")
+
+        sns.lineplot(x=times, y=history, color='black', ax=axes[1,0])
+        axes[1,0].set_xlabel('Time')
+        axes[1,0].set_ylabel('Frac Programmers')
+        axes[1,0].set_ylim(0, np.max(history)+0.2)
+
+        sns.lineplot(x=times, y=tot_pop, color='midnightblue', alpha=1., ax=axes[1,1])
+        axes[1,1].set_ylabel('Total Population')
+        axes[1,1].set_xlabel('Time')
+
+        param_lab = ['mu', 'nu_n', 'nu_p', 'alpha', 'beta', 'b']
+        title=';'.join([f'{lab}={val}' for lab, val in zip(param_lab, params)])
+        title += f"\nPreferential attachment={params[-1]}"
+        fig.suptitle(title, fontsize=16)
+
+    plot_quartet()
     
-    plot_frac_prog_group(history_group_prog, times, ax=axes[0,0])
-    axes[0,0].set_xlabel("")
-    plot_group_size(history_group, times, ax=axes[0,1])
-    axes[0,1].set_xlabel("")
+    # plt.savefig(f"../figs/summary_pa{params[-1]}.png")
 
-    sns.lineplot(x=times, y=history, color='black', ax=axes[1,0])
-    axes[1,0].set_xlabel('Time')
-    axes[1,0].set_ylabel('Frac Programmers')
-    axes[1,0].set_ylim(0, np.max(history)+0.2)
+    # individual plots
 
-    sns.lineplot(x=times, y=tot_pop, color='midnightblue', alpha=1., ax=axes[1,1])
-    axes[1,1].set_ylabel('Total Population')
-    axes[1,1].set_xlabel('Time')
+    def wrangle_Ig(Ig_norm, only_prog=True):
+        max_group = 20 if only_prog else 40
+        Ig_norm_wrangled = np.zeros((len(times), max_group))
+        for t in range(len(Ig_norm)):
+            num = np.zeros(max_group+1)   # Limit our attention to gsize < 21 for prog
+            denum = np.zeros(max_group+1) # because that's what we do in our AME model.
+            for gsize in range(max_group+1): 
+                for p in range(gsize):
+                    n = gsize-p
+                    if only_prog:
+                        num[gsize] += (p / gsize) * Ig_norm[t][p, n]
+                    denum[gsize] += Ig_norm[t][p, n]
+            
+            if only_prog:
+                weighted_sum = np.where(np.isnan(num[1:]/denum[1:]), 0, num[1:]/denum[1:])
+                Ig_norm_wrangled[t,:] = weighted_sum
+            else:
+                Ig_norm_wrangled[t,:] = denum[1:]
 
-    fig.suptitle(';'.join([f'{lab}={val}' for lab, val in zip(['mu', 'nu_n', 'nu_p', 'alpha', 'beta', 'b'], params)])+f"\nPreferential attachment={params[-1]}", fontsize=16)
-    plt.savefig(f"../figs/summary_pa{params[-1]}.png")
+        return Ig_norm_wrangled
+
+        
+    def plot_group_heatmap(Ig_norm, times, only_prog=False, ax=None, out=None):
+        """return gsize x time heatmap with z=fraction of programmers""" 
+        # Ignore gsize=0 b/c they'll be always zero
+        # Ig_norm=history_group
+        # only_prog=True
+        max_group = 20 if only_prog else 40
+        Ig_norm_wrangled = wrangle_Ig(Ig_norm, only_prog=only_prog)
+
+        if ax is None:
+            fig, ax = plt.subplots(1,1,figsize=(18,8))
+        sns.heatmap(pd.DataFrame(Ig_norm_wrangled).transpose(), cmap= "Blues" if only_prog else "Greens", 
+                    cbar_kws={"label": "frac programmers"}, ax=ax)
+        ax.set_yticklabels([_ for _ in range(1,max_group+1)]);
+        ax.set_xlabel("Time →")
+        ax.set_ylabel("Group size")
+        ax.set_xticklabels("");
+        # plt.savefig("update_frac_group.png")
+    
+    # fig, ax = plt.subplots(1,1,figsize=(15,12))
+    # gsizes = [6, 8, 11, 13, 15]
+    # plot_group_size(history_group, times, ax=ax, gsizes=gsizes)
+
+    fig, (ax1, ax2) = plt.subplots(2,1,figsize=(30,20))
+    plot_group_heatmap(history_group, times, only_prog=True, ax=ax1)
+    plot_group_heatmap(history_group, times, ax=ax2)
+    plt.savefig("update_frac_group.png")
+
+
 
 main()
 

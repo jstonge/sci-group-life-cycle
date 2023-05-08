@@ -2,3 +2,4 @@ README_files/
 wandb/
 notebooks/.ipynb_checkpoints/sos-checkpoint.ipynb
 src/test_sims.png
+src/sos2.py
