@@ -88,15 +88,14 @@ function plot_tryptic_cost(c, p)
   end
   
 
-  function get_prob_groups(sol; gsize, t)
-    v=[]
-    weights=[]
-    t, gsize=t_max, 4
-    for p=1:(gsize+1)
-      n = gsize-p+2
-      push!(weights, (p-1) / gsize)
-      push!(v, sol[t][p,n])
-    end
-    return wsum(v, weights)/sum(v)
+function get_prob_groups(sol; gsize, t)
+  v=[]
+  weights=[]
+  t, gsize=t_max, 4
+  for p=1:(gsize+1)
+    n = gsize-p+2
+    push!(weights, (p-1) / gsize)
+    push!(v, sol[t][p,n])
   end
-  get_prob_groups(sol, gsize=4, t=t_max)
+  return wsum(v, weights)/sum(v)
+end

@@ -1,4 +1,5 @@
 import heapq
+import sys
 from collections import Counter
 
 import matplotlib.pyplot as plt
@@ -6,23 +7,11 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import xgi
-from numpy.random import binomial, choice, exponential, rand, logistic
+from numpy.random import binomial, choice, exponential
+# from pympler import asizeof
 
-from helpers import count_prog_nonprog, grab, plot_frac_prog_group, plot_group_size
+from helpers import count_prog_nonprog, grab, plot_quartet, plot_group_heatmap
 
-
-def count_prog_nonprog(H, group):
-    """return (p, n)"""
-    if H.edges.get(group) is None:
-       return 0, 0
-    else:
-        states_count = Counter(H.nodes[n]['state'] for n in H.edges.members(group))    
-        if len(states_count) == 2:
-            return states_count.get('prog'), states_count.get('non-prog')
-        elif states_count.get('prog') is None:
-            return 0, list(states_count.values())[0]
-        else:
-            return list(states_count.values())[0], 0
 
 def τ(n, p, α, β, b=0.9): # group benefits
     return np.exp(-α + β*(1 - c(n, p, b=b)))
@@ -30,12 +19,8 @@ def τ(n, p, α, β, b=0.9): # group benefits
 def c(n, p, a=3, b=0.9): # cost function
     return b if n == p == 0 else b * np.exp(-a*p / n) 
 
-def plot_group_dist(H):
-    count_members = Counter([len(e) for e in H.edges.members()])
-    df = pd.DataFrame({"n": count_members.values(), "k": count_members.keys()})
-    sns.barplot(x="k", y="n", data=df, color="darkblue", alpha=0.5)
-    plt.xlabel("group size")
-    plt.ylabel("count")
+def sigmoid(p,n, K=25, mu=0.1):
+    return mu*(p+n+1) * (1-(p+n+1)/K)
 
 def init_hypergraph(nb_groups=1000, max_group_size=40):
     current_node = 0
@@ -55,6 +40,14 @@ def init_hypergraph(nb_groups=1000, max_group_size=40):
     return xgi.Hypergraph(hyperedge_dict)
 
 def adding_new_non_prog(H, group, tot_nodes):
+    """
+    B/c we allow group of size zero, we need to create 
+    a new edge when the previous one is depleted.
+    
+    NOTE: IF ever we use edge size to calculate the number
+          of groups, this will give the current number of 
+          alive groups.
+    """
     new_node =  tot_nodes + 1
     if H.edges.get(group) is None:
         # print(f"group {group} came back to life.")
@@ -64,13 +57,56 @@ def adding_new_non_prog(H, group, tot_nodes):
 
     H.nodes[new_node]['state'] = 'non-prog'
 
+def wrangle_Ig(Ig_norm, only_prog=True):
+    """
+    Extract the fraction of group size or the fraction of programmers
+    by groups from I_g.
+    """
+    # only_prog=True
+    # Ig_norm=history_group
+    
+    # If we only look at programmer, we only consider the bottom left corner
+    # of the matrix. Given that we want the fraction of programmers by groups,
+    # and that we bound the total number of programmers by having a square matrix (P x N),
+    # any group size > P will show a diminish fraction of programmers as the max 
+    # number of programmers has been reached.
+    P, N = Ig_norm[0].shape
+    max_group = P if only_prog else (P+N-1)
+    Ig_norm_wrangled = np.zeros((len(Ig_norm), max_group)) # (t, gsize)
+    for t in range(len(Ig_norm)):
+        # t=10
+        num = np.zeros(max_group)
+        denum = np.zeros(max_group)
+
+        for gsize in range(max_group): 
+            # When only prog, this will be range(0,21)
+            # gsize=22
+            min_range = (gsize - P + 1) if gsize >= P else 0
+            for p in range(min_range, np.min([P, gsize+1])):
+                n = gsize-p
+                # print(p, n, gsize)
+                if only_prog: # we only do numerator
+                    num[gsize] += 0 if p==gsize==0 else (p / gsize) * Ig_norm[t][p, n]
+                
+                denum[gsize] += Ig_norm[t][p, n]
+        
+        if only_prog == True:
+            weighted_sum = np.array([0 if n==d==0 else n/d for n, d in zip(num, denum)])
+            Ig_norm_wrangled[t,:] = weighted_sum / np.sum(weighted_sum)
+        else: # fraction of group is just the denum
+            Ig_norm_wrangled[t,:] = denum 
+
+    return Ig_norm_wrangled
+        
 def whats_happening(event_queue, H, group, params, t):
-    mu, nu_n, nu_p, alpha, beta, b, pa = params
-    p, n = count_prog_nonprog(H, group)
+    mu, nu_n, nu_p, alpha, beta, b, pa, K = params
+    p, n = count_prog_nonprog(H, group) # Not that we allow 0,0; But the next event we'll be a new non-prog.
 
     R_nonprog_grad = nu_n * n
     R_prog_grad = nu_p * p
-    R_new_nonprog = mu * (1 + (n+p) * pa)
+    # R_new_nonprog = mu * (1+(p+n)*pa)
+    # R_new_nonprog = mu * (1+p+n) #non-prog growth limited by PI carrying capacity.
+    R_new_nonprog = mu * (p+n+1) * (1-(p+n+1)/K) if pa==1 else mu
     R_conversion_attempt = τ(n, p, alpha, beta, b=b) if n > 0 else 0.
     
     # draw time to next event and event type
@@ -95,15 +131,23 @@ def whats_happening(event_queue, H, group, params, t):
     return event_queue
 
 def main():
-    params = (0.1, 0.01, 0.01, 0.01, 0.1, .5, 1)
+    """
+    params
+    ======
+     - K: carrying capapacity of the PI. It should bound the total number of
+          students by group. This means that the total number of students
+          should never exceed K*nb_groups.
+    """
+    #         mu, nu_n, nu_p, alpha, beta, b, pa, K 
+    params = (0.5, 0.01, 0.05, 0.01, 0.02, .5, 1, 40)
     I0 = 0.1
 
     #initial conditions
     event_queue = []
-    max_group_size = 20
+    max_group_size = params[-1]
     H = init_hypergraph(max_group_size=max_group_size)
     I = 0
-    Ig = np.zeros((max_group_size*10,max_group_size*10))
+    Ig = np.zeros((max_group_size+1, max_group_size+1))
     t = 0
     # total nodes dead or alive to have unique node identifier.
     tot_nodes = H.num_nodes
@@ -125,24 +169,22 @@ def main():
 
     # what's in the event queue?
     # Counter(e[2] for e in event_queue)
-    # is the time alright?
-    # [e[0] for e in event_queue]
-
+    
     history = []
     history_group = []
     tot_pop = []
     history.append(I/H.num_nodes)
-    # history_group_prog.append(Ig/np.sum(Ig))
     history_group.append(Ig / np.sum(Ig))
     tot_pop.append(H.num_nodes)
     times = np.zeros(1)
 
     #for each generation
-    t_max = 20
-    
-    #for each generation
-    while t < t_max:
+    t_max = 50
+    next_int = 1
 
+    #for each generation
+    while t <= t_max:
+        
         # draw from event queue
         # here is use time_tau because in whats_happening I always
         # add time + tau. So this is not just tau, this is current time.
@@ -150,7 +192,7 @@ def main():
 
         t=time
 
-        # while H.edges.get(group) is None:
+        # assert H.edges.get(group) is not None, "We should not have None group anymore"
         #     (time, group, event, p, n) = heapq.heappop(event_queue)
         # Ig[p, n]  -= 1
 
@@ -195,91 +237,74 @@ def main():
 
         event_queue = whats_happening(event_queue, H, group, params, t)
 
-        # update history
-        tot_pop.append(H.num_nodes)
-        history = np.append(history, I / H.num_nodes)
-        history_group.append(Ig / np.sum(Ig))
-        # history_group_prog.append(Ig/np.sum(Ig))
-        times = np.append(times, time)
+        # update history every integer
 
-
-    # sns.set_style('whitegrid')
-    def plot_quartet():
-        fig, axes = plt.subplots(2, 2, figsize=(15,10))
-        plot_frac_prog_group(history_group, times, ax=axes[0,0])
-        axes[0,0].set_xlabel("")
-        gsizes = [4,5,6,7,8,9,11,12,13]
-        plot_group_size(history_group, times, ax=axes[0,1], gsizes=gsizes)
-        axes[0,1].set_xlabel("")
-
-        sns.lineplot(x=times, y=history, color='black', ax=axes[1,0])
-        axes[1,0].set_xlabel('Time')
-        axes[1,0].set_ylabel('Frac Programmers')
-        axes[1,0].set_ylim(0, np.max(history)+0.2)
-
-        sns.lineplot(x=times, y=tot_pop, color='midnightblue', alpha=1., ax=axes[1,1])
-        axes[1,1].set_ylabel('Total Population')
-        axes[1,1].set_xlabel('Time')
-
-        param_lab = ['mu', 'nu_n', 'nu_p', 'alpha', 'beta', 'b']
-        title=';'.join([f'{lab}={val}' for lab, val in zip(param_lab, params)])
-        title += f"\nPreferential attachment={params[-1]}"
-        fig.suptitle(title, fontsize=16)
-
-    plot_quartet()
-    
-    # plt.savefig(f"../figs/summary_pa{params[-1]}.png")
-
-    # individual plots
-
-    def wrangle_Ig(Ig_norm, only_prog=True):
-        max_group = 20 if only_prog else 40
-        Ig_norm_wrangled = np.zeros((len(times), max_group))
-        for t in range(len(Ig_norm)):
-            num = np.zeros(max_group+1)   # Limit our attention to gsize < 21 for prog
-            denum = np.zeros(max_group+1) # because that's what we do in our AME model.
-            for gsize in range(max_group+1): 
-                for p in range(gsize):
-                    n = gsize-p
-                    if only_prog:
-                        num[gsize] += (p / gsize) * Ig_norm[t][p, n]
-                    denum[gsize] += Ig_norm[t][p, n]
-            
-            if only_prog:
-                weighted_sum = np.where(np.isnan(num[1:]/denum[1:]), 0, num[1:]/denum[1:])
-                Ig_norm_wrangled[t,:] = weighted_sum
-            else:
-                Ig_norm_wrangled[t,:] = denum[1:]
-
-        return Ig_norm_wrangled
-
+        assert np.sum(Ig) == 1000, "Our number of groups is fixed"        
         
-    def plot_group_heatmap(Ig_norm, times, only_prog=False, ax=None, out=None):
-        """return gsize x time heatmap with z=fraction of programmers""" 
-        # Ignore gsize=0 b/c they'll be always zero
-        # Ig_norm=history_group
-        # only_prog=True
-        max_group = 20 if only_prog else 40
-        Ig_norm_wrangled = wrangle_Ig(Ig_norm, only_prog=only_prog)
+        if t >= next_int: 
+            tot_pop.append(H.num_nodes)
+            history = np.append(history, I / H.num_nodes)
+            history_group.append(Ig / np.sum(Ig))
+            times = np.append(times, time)
+            
+            next_int += 1
 
-        if ax is None:
-            fig, ax = plt.subplots(1,1,figsize=(18,8))
-        sns.heatmap(pd.DataFrame(Ig_norm_wrangled).transpose(), cmap= "Blues" if only_prog else "Greens", 
-                    cbar_kws={"label": "frac programmers"}, ax=ax)
-        ax.set_yticklabels([_ for _ in range(1,max_group+1)]);
-        ax.set_xlabel("Time →")
-        ax.set_ylabel("Group size")
-        ax.set_xticklabels("");
-        # plt.savefig("update_frac_group.png")
+    # Plotting
+
+    sns.set_style('whitegrid')
+    
+    ig_wrangled = wrangle_Ig(history_group, only_prog=True)
+    ig_wrangled_group = wrangle_Ig(history_group, only_prog=False)
+
+    assert (np.sum(ig_wrangled[t_max]) > .998) & (np.sum(ig_wrangled[t_max]) < 1.001), "Should always be normalized"
+    assert (np.sum(ig_wrangled_group[t_max]) > .998) & (np.sum(ig_wrangled_group[t_max]) < 1.001) == 1.0, "Should always be normalized"
+
+    # Quartet
+    plot_quartet(history, tot_pop, params, history_group, times)
+    
+
+    # Timeseries 
+    ss = np.array([_ for _ in ig_wrangled[t_max,:]])
+    top_ind = ss.argsort()[-5:][::-1]
+    fig, ax = plt.subplots(1,1, figsize=(10,8))
+    for i in range(ig_wrangled.shape[1]):
+        if i in top_ind:
+            plt.plot(times, [ig_wrangled[t, i] for t in range(len(history_group))], label=f"gsize={i}", marker="o")
+        plt.plot(times, [ig_wrangled[t, i] for t in range(len(history_group))], color="grey", alpha=0.1, label=f"", marker="o")
+    plt.plot(times[-1], ig_wrangled[t_max, top_ind[0]], label="")
+    plt.legend()
+    plt.ylabel("frac programmers")
+    plt.xlabel("time")
+
+
+    ss = np.array([_ for _ in ig_wrangled_group[t_max,:]])
+    top_ind = ss.argsort()[-5:][::-1]
+    fig, ax = plt.subplots(1,1, figsize=(10,8))
+    for i in range(ig_wrangled_group.shape[1]):
+        if i in top_ind:
+            plt.plot(times, [ig_wrangled_group[t, i] for t in range(len(history_group))], label=f"gsize={i}", marker="o")    
+        plt.plot(times, [ig_wrangled_group[t, i] for t in range(len(history_group))], color="grey", alpha=0.3, label=f"", marker="o")
+    plt.plot(times[-1], ig_wrangled_group[t_max, top_ind[0]], label="")
+    plt.legend()
+    # plt.ylim(0,1)
+    plt.ylabel("frac group size")
+    plt.xlabel("time")
+    # plt.savefig("python_sos_nup05.png")
+    
+    # Individual plots
     
     # fig, ax = plt.subplots(1,1,figsize=(15,12))
     # gsizes = [6, 8, 11, 13, 15]
     # plot_group_size(history_group, times, ax=ax, gsizes=gsizes)
+    
+    fig, (ax1, ax2) = plt.subplots(2,1,figsize=(15,10))
+    plot_group_heatmap(ig_wrangled, only_prog=True, ax=ax1)
+    plot_group_heatmap(ig_wrangled_group, only_prog=False, ax=ax2)
+    # plt.savefig("update_frac_group.png")
 
-    fig, (ax1, ax2) = plt.subplots(2,1,figsize=(30,20))
-    plot_group_heatmap(history_group, times, only_prog=True, ax=ax1)
-    plot_group_heatmap(history_group, times, ax=ax2)
-    plt.savefig("update_frac_group.png")
+    
+    # plt.savefig(f"../figs/summary_pa{params[-1]}.png")
+
 
 
 
