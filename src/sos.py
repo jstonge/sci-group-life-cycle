@@ -139,7 +139,7 @@ def main():
           should never exceed K*nb_groups.
     """
     #         mu, nu_n, nu_p, alpha, beta, b, pa, K 
-    params = (0.5, 0.01, 0.05, 0.01, 0.02, .5, 1, 40)
+    params = (0.25, 0.01, 0.05, 0.01, 0.1, .5, 1, 40)
     I0 = 0.1
 
     #initial conditions
@@ -256,9 +256,15 @@ def main():
     ig_wrangled = wrangle_Ig(history_group, only_prog=True)
     ig_wrangled_group = wrangle_Ig(history_group, only_prog=False)
 
+
     assert (np.sum(ig_wrangled[t_max]) > .998) & (np.sum(ig_wrangled[t_max]) < 1.001), "Should always be normalized"
     assert (np.sum(ig_wrangled_group[t_max]) > .998) & (np.sum(ig_wrangled_group[t_max]) < 1.001) == 1.0, "Should always be normalized"
 
+    import matplotlib
+
+    font = {'size'   : 16}
+    matplotlib.rc('font', **font)
+    
     # Quartet
     plot_quartet(history, tot_pop, params, history_group, times)
     
@@ -276,20 +282,38 @@ def main():
     plt.ylabel("frac programmers")
     plt.xlabel("time")
 
+    
+    julia_output = pd.read_csv("test.csv").to_numpy()
+    
+    fig, ax = plt.subplots(1,1, figsize=(10,8))
 
     ss = np.array([_ for _ in ig_wrangled_group[t_max,:]])
     top_ind = ss.argsort()[-5:][::-1]
-    fig, ax = plt.subplots(1,1, figsize=(10,8))
     for i in range(ig_wrangled_group.shape[1]):
         if i in top_ind:
-            plt.plot(times, [ig_wrangled_group[t, i] for t in range(len(history_group))], label=f"gsize={i}", marker="o")    
-        plt.plot(times, [ig_wrangled_group[t, i] for t in range(len(history_group))], color="grey", alpha=0.3, label=f"", marker="o")
-    plt.plot(times[-1], ig_wrangled_group[t_max, top_ind[0]], label="")
+            ax.plot(times, [ig_wrangled_group[t, i] for t in range(len(history_group))], label=f"gsize={i}")    
+        ax.plot(times, [ig_wrangled_group[t, i] for t in range(len(history_group))], color="grey", alpha=0.3, label=f"")
+    ax.plot(times[-1], ig_wrangled_group[t_max, top_ind[0]], label="")
     plt.legend()
+    # plt.ylim(0,1)
+    # plt.ylabel("frac group size")
+    # plt.xlabel("time")
+    
+
+    ss = np.array([_ for _ in julia_output[t_max,:]])
+    top_ind = ss.argsort()[-5:][::-1]
+    # fig, ax = plt.subplots(1,1, figsize=(10,8))
+    for i in range(julia_output.shape[1]):
+        if i in top_ind:
+            ax.scatter(times, [julia_output[t, i] for t in range(len(history_group))], marker="*", label=f"gsize={i}")    
+        ax.scatter(times, [julia_output[t, i] for t in range(len(history_group))], marker="*", color="grey", alpha=0.3, label=f"")
+    ax.scatter(times[-1], julia_output[t_max, top_ind[0]], marker="*", label="")
+    # plt.legend()
     # plt.ylim(0,1)
     plt.ylabel("frac group size")
     plt.xlabel("time")
-    # plt.savefig("python_sos_nup05.png")
+    
+    plt.savefig("python_sos_julia.pdf")
     
     # Individual plots
     

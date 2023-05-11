@@ -2,6 +2,10 @@ using Pkg; Pkg.activate(".")
 using ArgParse, Distributions, StatsBase, OrdinaryDiffEq, Plots, OffsetArrays
 using Plots.PlotMeasures
 
+using CSV
+using DataFrames
+
+
 include("helpers.jl")
 
 τ(n, i, α, β; b=.9) = exp(-α + β*(1 - c(n, i, b=b))) # group benefits
@@ -121,7 +125,7 @@ end
 # a = 3.       # parameter cost function
 b = .5
 K = 40
-params = (0.5, 0.01, 0.05, 0.01, 0.02, .5, 40)
+params = (0.5, 0.01, 0.01, 0.01, 0.1, .5, 40)
 # params = [μ, νₙ, νₚ, α, β, b, K]
 
 u₀ = initialize_u0(N=40, M=1000)
@@ -148,6 +152,9 @@ round.(sol[t_max][21,:], digits=4)
 # sol_Wrangled = frac_prog_in_groups(sol)
 sol_wrangled = wrangle_Ig(sol, true)
 sol_wrangled_group = wrangle_Ig(sol, false)
+
+
+CSV.write("src/test.csv", DataFrame(sol_wrangled_group, :auto))
 
 @assert (sum(sol_wrangled[t_max,:]) > .998) && (sum(sol_wrangled[t_max,:]) < 1.001) "Should always be normalized"
 @assert (sum(sol_wrangled_group[t_max,:]) > .998) && (sum(sol_wrangled_group[t_max,:]) < 1.001) == 1.0 "Should always be normalized"
