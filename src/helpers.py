@@ -5,9 +5,6 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 
-def get_size(obj):
-    return print(f"{asizeof.asizeof(obj) / 1000 / 1000}Mb")
-
 
 def get_max(history_group, type, t):
     """type: type=1 => non-prog; type=0 => prog"""
@@ -57,7 +54,6 @@ def plot_pref(history_pref):
     sns.barplot(y="group", x="# selected", data=count_df, ax=ax)
 
 
-
 def wrangle_Ig(Ig_norm, only_prog=True):
         # only_prog=False
         # Ig_norm=history_group
@@ -72,7 +68,7 @@ def wrangle_Ig(Ig_norm, only_prog=True):
                 p_max = min([20, gsize])
                 for p in range(p_min, p_max):    
                     n = gsize-p
-                    print((gsize, p, n))
+                    # print((gsize, p, n))
             
                     if only_prog: # we only do numerator
                         num[gsize] += (p / gsize) * Ig_norm[t][p, n]
@@ -88,12 +84,11 @@ def wrangle_Ig(Ig_norm, only_prog=True):
         return Ig_norm_wrangled
         
 
-
 def plot_group_heatmap(Ig_norm_wrangled, only_prog=False, ax=None):
     """return gsize x time heatmap with z=fraction of programmers""" 
     # Ig_norm_wrangled=ig_wrangled
     # only_prog=True
-    max_group = len(Ig_norm_wrangled[0,:]) if only_prog else (len(Ig_norm_wrangled[0,:])-1) // 2
+    max_group = len(Ig_norm_wrangled[0,:])-1
     if ax is None:
         fig, ax = plt.subplots(1,1,figsize=(18,8))
     sns.heatmap(pd.DataFrame(Ig_norm_wrangled).transpose()[:max_group], 
@@ -113,8 +108,7 @@ def plot_quartet(history, tot_pop, params, history_group, times):
     
     plot_group_heatmap(ig_wrangled, only_prog=True, ax=axes[0,0])
     axes[0,0].set_xlabel("")
-    gsizes = [4, 6 ,8, 11, 13]
-
+    
     plot_group_heatmap(ig_wrangled_group, only_prog=False, ax=axes[0,1])
     axes[0,1].set_xlabel("")
     
@@ -130,7 +124,6 @@ def plot_quartet(history, tot_pop, params, history_group, times):
     title=';'.join([f'{lab}={val}' for lab, val in zip(param_lab, params)])
     title += f"\nPI carrying capacity={params[-1]}"
     fig.suptitle(title, fontsize=16)
-
 
 
 def plot_group_size(history_group, times, ax=None, gsizes=None, out=None):

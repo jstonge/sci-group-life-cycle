@@ -3,6 +3,7 @@ import sys
 from collections import Counter
 
 import matplotlib.pyplot as plt
+import matplotlib   
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -12,6 +13,9 @@ from numpy.random import binomial, choice, exponential
 
 from helpers import count_prog_nonprog, grab, plot_quartet, plot_group_heatmap
 
+# font = {'size'   : 16}
+# matplotlib.rc('font', **font)
+
 
 def τ(n, p, α, β, b=0.9): # group benefits
     return np.exp(-α + β*(1 - c(n, p, b=b)))
@@ -19,8 +23,38 @@ def τ(n, p, α, β, b=0.9): # group benefits
 def c(n, p, a=3, b=0.9): # cost function
     return b if n == p == 0 else b * np.exp(-a*p / n) 
 
-def sigmoid(p,n, K=25, mu=0.1):
-    return mu*(p+n+1) * (1-(p+n+1)/K)
+# def sigmoid(p,n, N, K=25, mu=0.1):
+#     return mu*(p+n+1) * (1-(p+n+1)/K) / N
+
+
+# def τ_old(n,p, alpha, beta, b=.9):
+#     return -alpha + beta(1 - c(n,p, b=b))
+
+def τ(n,p,α,β,b=.9):
+    return (-(n+1)**α/2) * (p+1)**β/2 + (1-c(n,p))*n**α/2 * (p+2)**β/2 + c(n,p)*n**α/2 * (p+1)**β/2
+
+sns.set_style("whitegrid")
+
+p=5
+N=20
+alpha, beta = 0.01, 0.1
+plt.plot(range(1,N), [τ(n, p, alpha, beta) for n in range(1,N)], label=f"p={p}")
+plt.xlabel("# non-programmers")
+plt.legend()
+
+def plot_prog(n):
+    N=40
+    P=N-n
+    alpha=.01
+    beta=.1
+    plt.plot(range(P), [τ(n, p, alpha, beta) for p in range(P)], label=f"n={n}")
+    plt.xlabel("# programmers")
+    plt.legend()
+
+plot_prog(1)
+plot_prog(5)
+plot_prog(10)
+plot_prog(20)
 
 def init_hypergraph(nb_groups=1000, max_group_size=40):
     current_node = 0
@@ -106,7 +140,16 @@ def whats_happening(event_queue, H, group, params, t):
     R_prog_grad = nu_p * p
     # R_new_nonprog = mu * (1+(p+n)*pa)
     # R_new_nonprog = mu * (1+p+n) #non-prog growth limited by PI carrying capacity.
-    R_new_nonprog = mu * (p+n+1) * (1-(p+n+1)/K) if pa==1 else mu
+    # (p+n+1) * (1-(p+n+1)/K)
+    # (p+n+1) * (K-p+n)
+    # R_new_nonprog = mu * (p+n+1) * (1-(p+n+1)/K) if pa==1 else mu
+
+    # As you have more people having H.nodes + H.num_edges reduce the recruitment rate.
+    # We need to say H.num_edges b/c of the `+1` that take into account the 
+    # the possibility of having empty groups (as if we are counting the PI) 
+    R_new_nonprog = mu * (p+n+1) * (1-(p+n+1)/K) / (H.num_nodes + H.num_edges) if pa==1 else mu
+
+    # R_new_nonprog = mu * (p+n+1) * (1-(p+n+1)/K) / (H.num_nodes + H.num_edges) if pa==1 else mu
     R_conversion_attempt = τ(n, p, alpha, beta, b=b) if n > 0 else 0.
     
     # draw time to next event and event type
@@ -139,7 +182,7 @@ def main():
           should never exceed K*nb_groups.
     """
     #         mu, nu_n, nu_p, alpha, beta, b, pa, K 
-    params = (0.25, 0.01, 0.05, 0.01, 0.1, .5, 1, 40)
+    params = (0.5, 0.01, 0.01, 0.01, 0.1, .5, 1, 40)
     I0 = 0.1
 
     #initial conditions
@@ -256,18 +299,12 @@ def main():
     ig_wrangled = wrangle_Ig(history_group, only_prog=True)
     ig_wrangled_group = wrangle_Ig(history_group, only_prog=False)
 
-
     assert (np.sum(ig_wrangled[t_max]) > .998) & (np.sum(ig_wrangled[t_max]) < 1.001), "Should always be normalized"
     assert (np.sum(ig_wrangled_group[t_max]) > .998) & (np.sum(ig_wrangled_group[t_max]) < 1.001) == 1.0, "Should always be normalized"
 
-    import matplotlib
-
-    font = {'size'   : 16}
-    matplotlib.rc('font', **font)
-    
     # Quartet
     plot_quartet(history, tot_pop, params, history_group, times)
-    
+
 
     # Timeseries 
     ss = np.array([_ for _ in ig_wrangled[t_max,:]])
@@ -282,36 +319,45 @@ def main():
     plt.ylabel("frac programmers")
     plt.xlabel("time")
 
-    
-    julia_output = pd.read_csv("test.csv").to_numpy()
-    
-    fig, ax = plt.subplots(1,1, figsize=(10,8))
-
     ss = np.array([_ for _ in ig_wrangled_group[t_max,:]])
     top_ind = ss.argsort()[-5:][::-1]
+    fig, ax = plt.subplots(1,1, figsize=(10,8))
     for i in range(ig_wrangled_group.shape[1]):
         if i in top_ind:
-            ax.plot(times, [ig_wrangled_group[t, i] for t in range(len(history_group))], label=f"gsize={i}")    
-        ax.plot(times, [ig_wrangled_group[t, i] for t in range(len(history_group))], color="grey", alpha=0.3, label=f"")
-    ax.plot(times[-1], ig_wrangled_group[t_max, top_ind[0]], label="")
+            plt.plot(times, [ig_wrangled_group[t, i] for t in range(len(history_group))], label=f"gsize={i}", marker="o")
+        plt.plot(times, [ig_wrangled_group[t, i] for t in range(len(history_group))], color="grey", alpha=0.1, label=f"", marker="o")
+    plt.plot(times[-1], ig_wrangled_group[t_max, top_ind[0]], label="")
     plt.legend()
-    # plt.ylim(0,1)
-    # plt.ylabel("frac group size")
-    # plt.xlabel("time")
+    plt.ylabel("frac programmers")
+    plt.xlabel("time")
+
+    
+    # JULIA 
+
+    # julia_output = pd.read_csv("test.csv").to_numpy()
+    
+    # fig, ax = plt.subplots(1,1, figsize=(10,8))
+
+    # ss = np.array([_ for _ in ig_wrangled_group[t_max,:]])
+    # top_ind = ss.argsort()[-5:][::-1]
+    # for i in range(ig_wrangled_group.shape[1]):
+    #     if i in top_ind:
+    #         ax.plot(times, [ig_wrangled_group[t, i] for t in range(len(history_group))], label=f"gsize={i}")    
+    #     ax.plot(times, [ig_wrangled_group[t, i] for t in range(len(history_group))], color="grey", alpha=0.3, label=f"")
+    # ax.plot(times[-1], ig_wrangled_group[t_max, top_ind[0]], label="")
+    # plt.legend()
     
 
-    ss = np.array([_ for _ in julia_output[t_max,:]])
-    top_ind = ss.argsort()[-5:][::-1]
-    # fig, ax = plt.subplots(1,1, figsize=(10,8))
-    for i in range(julia_output.shape[1]):
-        if i in top_ind:
-            ax.scatter(times, [julia_output[t, i] for t in range(len(history_group))], marker="*", label=f"gsize={i}")    
-        ax.scatter(times, [julia_output[t, i] for t in range(len(history_group))], marker="*", color="grey", alpha=0.3, label=f"")
-    ax.scatter(times[-1], julia_output[t_max, top_ind[0]], marker="*", label="")
-    # plt.legend()
-    # plt.ylim(0,1)
-    plt.ylabel("frac group size")
-    plt.xlabel("time")
+    # ss = np.array([_ for _ in julia_output[t_max,:]])
+    # top_ind = ss.argsort()[-5:][::-1]
+    # # fig, ax = plt.subplots(1,1, figsize=(10,8))
+    # for i in range(julia_output.shape[1]):
+    #     if i in top_ind:
+    #         ax.scatter(times, [julia_output[t, i] for t in range(len(history_group))], marker="*", label=f"gsize={i}")    
+    #     ax.scatter(times, [julia_output[t, i] for t in range(len(history_group))], marker="*", color="grey", alpha=0.3, label=f"")
+    # ax.scatter(times[-1], julia_output[t_max, top_ind[0]], marker="*", label="")
+    # plt.ylabel("frac group size")
+    # plt.xlabel("time")
     
     plt.savefig("python_sos_julia.pdf")
     
@@ -337,3 +383,46 @@ main()
 
 
 
+
+
+
+def plot_group_heatmap(Ig_norm_wrangled, only_prog=False, ax=None):
+    """return gsize x time heatmap with z=fraction of programmers""" 
+    # Ig_norm_wrangled=ig_wrangled
+    # only_prog=True
+    max_group = len(Ig_norm_wrangled[0,:])-1
+    if ax is None:
+        fig, ax = plt.subplots(1,1,figsize=(18,8))
+    sns.heatmap(pd.DataFrame(Ig_norm_wrangled).transpose()[:max_group], 
+                cmap= "Blues" if only_prog else "Greens", 
+                cbar_kws={"label": "frac programmers" if only_prog else "frac gsize"}, ax=ax)
+    # labels = [int(item.get_text())+1 for item in ax.get_yticklabels()]
+    ax.set_xlabel("Time →")
+    ax.set_ylabel("Group size")
+    ax.set_xticklabels([]);
+
+
+def plot_quartet(history, tot_pop, params, history_group, times):
+    fig, axes = plt.subplots(2, 2, figsize=(15,10))
+    
+    ig_wrangled = wrangle_Ig(history_group, only_prog=True)
+    ig_wrangled_group = wrangle_Ig(history_group, only_prog=False)
+    
+    plot_group_heatmap(ig_wrangled, only_prog=True, ax=axes[0,0])
+    axes[0,0].set_xlabel("")
+    
+    plot_group_heatmap(ig_wrangled_group, only_prog=False, ax=axes[0,1])
+    axes[0,1].set_xlabel("")
+    
+    sns.lineplot(x=times, y=history, color='black', ax=axes[1,0])
+    axes[1,0].set_xlabel('Time')
+    axes[1,0].set_ylabel('Frac Programmers')
+    axes[1,0].set_ylim(0, np.max(history)+0.2)
+    
+    sns.lineplot(x=times, y=tot_pop, color='midnightblue', alpha=1., ax=axes[1,1])
+    axes[1,1].set_ylabel('Total Population')
+    axes[1,1].set_xlabel('Time')
+    param_lab = ['mu', 'nu_n', 'nu_p', 'alpha', 'beta', 'b']
+    title=';'.join([f'{lab}={val}' for lab, val in zip(param_lab, params)])
+    title += f"\nPI carrying capacity={params[-1]}"
+    fig.suptitle(title, fontsize=16)
